@@ -1,0 +1,15 @@
+.git
+.github
+.cursor
+build/
+**/__pycache__/
+**/*.pyc
+web_client/.venv/
+models/*.rknn
+models/*.rkllm
+models/*.part
+*.log
+*.mp4
+*.mkv
+*.avi
+.env

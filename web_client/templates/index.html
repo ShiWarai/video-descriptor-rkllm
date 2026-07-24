@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Video Descriptor</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  <main class="container">
+    <header>
+      <h1>Video Descriptor</h1>
+      <p class="muted">API: <code>{{ api_base }}</code></p>
+    </header>
+
+    <section class="status card">
+      <h2>Статус сервиса</h2>
+      <p id="status-error" class="error" {% if status.get('status') != 'unreachable' %}hidden{% endif %}>
+        {{ status.get('error', '') }}
+      </p>
+      <dl id="status-dl" {% if status.get('status') == 'unreachable' %}hidden{% endif %}>
+        <div><dt>status</dt><dd id="st-status">{{ status.get('status', '—') }}</dd></div>
+        <div><dt>current_job</dt><dd id="st-job">{{ status.get('current_job_id') or '—' }}</dd></div>
+        <div><dt>loaded_model</dt><dd id="st-model">{{ status.get('loaded_model_id') or '—' }}</dd></div>
+      </dl>
+    </section>
+
+    <section class="card">
+      <h2>Анализ видео</h2>
+      <form action="{{ url_for('analyze') }}" method="post" enctype="multipart/form-data">
+        <label>
+          Видео
+          <input type="file" name="video" accept="video/*" required>
+        </label>
+
+        <div class="row">
+          <label>
+            Модель
+            <select name="model" required>
+              {% if models %}
+                {% for m in models %}
+                  <option value="{{ m.id }}" {% if loop.first %}selected{% endif %}>
+                    {{ model_label(m.id) }}
+                  </option>
+                {% endfor %}
+              {% else %}
+                <option value="" disabled selected>API недоступен — нет моделей</option>
+              {% endif %}
+            </select>
+          </label>
+          <label>
+            Язык
+            <select name="lang">
+              <option value="ru" selected>ru</option>
+              <option value="eng">eng</option>
+            </select>
+          </label>
+          <label>
+            Промпт
+            <select name="prompt_mode">
+              <option value="simple">Простое описание</option>
+              <option value="detailed" selected>Подробное</option>
+            </select>
+          </label>
+        </div>
+
+        <div class="row">
+          <label>
+            Кадры (max)
+            <input type="number" name="frames" value="8" min="1" max="128">
+          </label>
+          <label>
+            Frame budget
+            <input type="number" name="frame_budget" placeholder="из config" min="0" max="128">
+          </label>
+        </div>
+
+        <div class="row">
+          <label>
+            Max tokens
+            <input type="number" name="max_tokens" placeholder="1024 (config)" min="0" max="8192">
+          </label>
+          <label>
+            Thinking
+            <select name="enable_thinking">
+              <option value="" selected>из config</option>
+              <option value="false">off</option>
+              <option value="true">on</option>
+            </select>
+          </label>
+          <label>
+            Temperature
+            <input type="number" name="temperature" placeholder="из config" min="0" max="2" step="0.1">
+          </label>
+        </div>
+
+        <label>
+          Транскрипт (опционально, от внешнего ASR)
+          <textarea name="transcript" rows="2" placeholder="Пусто = stub"></textarea>
+        </label>
+
+        <button type="submit" {% if not models %}disabled{% endif %}>Отправить</button>
+      </form>
+    </section>
+  </main>
+  <script>
+    (function () {
+      const errEl = document.getElementById("status-error");
+      const dl = document.getElementById("status-dl");
+      const st = document.getElementById("st-status");
+      const job = document.getElementById("st-job");
+      const model = document.getElementById("st-model");
+
+      function dash(v) { return v && String(v).length ? v : "—"; }
+
+      async function refreshStatus() {
+        try {
+          const r = await fetch("/api/status", { cache: "no-store" });
+          const data = await r.json();
+          if (!r.ok || data.status === "unreachable") {
+            errEl.textContent = data.error || "API недоступен";
+            errEl.hidden = false;
+            dl.hidden = true;
+            return;
+          }
+          errEl.hidden = true;
+          dl.hidden = false;
+          st.textContent = dash(data.status);
+          job.textContent = dash(data.current_job_id);
+          model.textContent = dash(data.loaded_model_id);
+          st.classList.toggle("busy", data.status === "busy");
+        } catch (e) {
+          errEl.textContent = String(e);
+          errEl.hidden = false;
+          dl.hidden = true;
+        }
+      }
+
+      refreshStatus();
+      setInterval(refreshStatus, 2000);
+    })();
+  </script>
+</body>
+</html>

@@ -1,0 +1,45 @@
+{
+  "host": "0.0.0.0",
+  "port": 8080,
+  "workdir": "/tmp/vlm_work",
+  "default_model": "qwen3.5-0.8b-video",
+  "models": [
+    {
+      "id": "qwen3.5-0.8b-video",
+      "vision_model": "models/qwen3.5-0.8b_vision_rk3588.rknn",
+      "llm_model": "models/qwen3.5-0.8b_w8a8_rk3588.rkllm",
+      "temperature": 0.7,
+      "top_k": 20,
+      "top_p": 0.8,
+      "presence_penalty": 1.5
+    },
+    {
+      "id": "qwen3.5-2b-video",
+      "vision_model": "models/qwen3.5-2b_vision_rk3588.rknn",
+      "llm_model": "models/qwen3.5-2b_w8a8_rk3588.rkllm",
+      "temperature": 0.7,
+      "top_k": 20,
+      "top_p": 0.8,
+      "presence_penalty": 1.5
+    }
+  ],
+  "pipeline": {
+    "default_frames": 8,
+    "default_context": 8192,
+    "default_max_tokens": 1024,
+    "frame_budget": 28,
+    "default_lang": "ru",
+    "prompt_reserve_tokens": 512,
+    "absolute_max_frames": 0,
+    "temperature": 0.7,
+    "top_k": 20,
+    "top_p": 0.8,
+    "presence_penalty": 1.5,
+    "thinking_temperature": 0.6,
+    "thinking_top_p": 0.95,
+    "thinking_presence_penalty": 0.0,
+    "ffmpeg_bin_path": "third_party/ffmpeg-rockchip/bin",
+    "enable_thinking": false,
+    "verbose": true
+  }
+}

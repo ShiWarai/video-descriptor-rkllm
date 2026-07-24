@@ -1,0 +1,10 @@
+build/
+web_client/.venv/
+web_client/__pycache__/
+**/__pycache__/
+**/*.pyc
+models/
+*.log
+.env
+.cursor/
+docker-compose.override.yml
