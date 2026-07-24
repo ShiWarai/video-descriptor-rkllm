@@ -73,6 +73,7 @@ dl {
 
 dt { color: var(--muted); }
 dd { margin: 0; }
+dd.busy, #st-status.busy { color: #ffb020; font-weight: 600; }
 
 .description {
   white-space: pre-wrap;

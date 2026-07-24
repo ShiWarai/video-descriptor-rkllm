@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Web UI for Qwen3-VL Video Context API."""
+"""Web UI for video-descriptor-rkllm API."""
 
 from __future__ import annotations
 
@@ -34,6 +34,17 @@ def model_label(model_id: str) -> str:
     if "2b" in lower:
         return f"{model_id} (точнее)"
     return model_id
+
+
+@app.route("/api/status", methods=["GET"])
+def api_status():
+    try:
+        r = requests.get(f"{API_BASE}/v1/status", timeout=3)
+        if r.ok:
+            return r.json(), 200
+        return {"status": "error", "error": f"API {r.status_code}"}, 502
+    except requests.RequestException as exc:
+        return {"status": "unreachable", "error": str(exc)}, 502
 
 
 @app.route("/", methods=["GET"])

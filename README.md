@@ -166,23 +166,30 @@ LD_LIBRARY_PATH=./third_party/lib:./third_party/ffmpeg-rockchip/lib \
 
 ## Модели
 
-Веса **не** входят в образ и git. См. [`models/README.md`](models/README.md).
+Веса **не** в git. Каталог `./models` на хосте создаётся при `docker compose up` (volume `./models` → `/app/models`).
 
-| Модель | Hugging Face |
-|--------|--------------|
-| Qwen3.5-0.8B | [Qengineering/Qwen3.5-0.8B-rk3588](https://huggingface.co/Qengineering/Qwen3.5-0.8B-rk3588) |
-| Qwen3.5-2B | [Qengineering/Qwen3.5-2B-rk3588](https://huggingface.co/Qengineering/Qwen3.5-2B-rk3588) |
+| Модель | Vision (RKNN) | LLM (RKLLM) | Hugging Face |
+|--------|---------------|-------------|--------------|
+| Qwen3.5-0.8B | `qwen3.5-0.8b_vision_rk3588.rknn` | `qwen3.5-0.8b_w8a8_rk3588.rkllm` | [HF](https://huggingface.co/Qengineering/Qwen3.5-0.8B-rk3588) |
+| Qwen3.5-2B | `qwen3.5-2b_vision_rk3588.rknn` | `qwen3.5-2b_w8a8_rk3588.rkllm` | [HF](https://huggingface.co/Qengineering/Qwen3.5-2B-rk3588) |
 
-**Автоподгрузка (opt-in):** `VLM_DOWNLOAD_MODELS=0.8b` (или `2b`, `all`, `0.8b,2b`). Свои URL: `VLM_MODEL_URLS=имя_файла=https://...` — см. [`models/README.md`](models/README.md).
+**Автоподгрузка (opt-in):** `VLM_DOWNLOAD_MODELS=0.8b` (или `2b`, `all`, `0.8b,2b`). Свои URL: `VLM_MODEL_URLS=имя_файла=https://...`
+
+| `VLM_DOWNLOAD_MODELS` | Что качается |
+|-----------------------|--------------|
+| `0` / не задано | ничего |
+| `0.8b` | только 0.8B |
+| `2b` | только 2B |
+| `all` / `1` | обе |
 
 ```bash
 VLM_DOWNLOAD_MODELS=0.8b docker compose up -d api
 ```
 
-Или вручную:
+Ручная загрузка:
 
 ```bash
-MODELS_DIR=./models ./scripts/download_models.sh
+MODELS_DIR=./models ./scripts/download_models.sh 0.8b
 ```
 
 ---
