@@ -7,6 +7,16 @@ VIDEO="${ROOT}/test_video.mp4"
 
 echo "== API smoke =="
 curl -sf "${API_URL}/health" >/dev/null
+for _ in $(seq 1 60); do
+  if curl -sf "${API_URL}/ready" >/dev/null; then
+    break
+  fi
+  sleep 5
+done
+curl -sf "${API_URL}/ready" >/dev/null || {
+  echo "API not ready (${API_URL}/ready)"
+  exit 1
+}
 models="$(curl -sf "${API_URL}/v1/models")"
 echo "${models}" | grep -q '"qwen3.5-0.8b-video"' || {
   echo "missing 0.8b model in /v1/models"

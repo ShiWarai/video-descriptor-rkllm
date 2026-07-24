@@ -31,7 +31,7 @@ VideoContextPipeline::VideoContextPipeline(ModelRegistry registry, PipelineConfi
     : registry_(std::move(registry)),
       config_(std::move(config)),
       extractor_(config_.ffmpeg_bin_path),
-      transcriber_(std::make_unique<StubAudioTranscriber>())
+      transcriber_(makeAudioTranscriber(config_))
 {
 }
 
@@ -306,17 +306,19 @@ AnalyzeResult VideoContextPipeline::analyze(const AnalyzeRequest& request)
 
     const int extracted = extract_fut.get();
     const bool model_ok = model_fut.get();
-    transcript_fut.get();
 
     result.metrics["model_load_ms"] = prep.model_load_ms;
     result.metrics["frame_extract_ms"] = prep.extract_ms;
-    result.metrics["transcript_ms"] = prep.transcript_ms;
     result.metrics["vision_encode_ms"] = elapsedMs(t_encode);
-    result.transcript = std::move(prep.transcript);
     result.model = loaded_model_id_;
     result.duration_sec = prep.video_info.duration_sec;
 
     if (!model_ok) {
+        transcript_fut.get();
+        result.metrics["transcript_ms"] = prep.transcript_ms;
+        result.metrics["audio_extract_ms"] = prep.transcript.audio_extract_ms;
+        result.metrics["whisper_ms"] = prep.transcript.whisper_ms;
+        result.transcript = std::move(prep.transcript);
         result.error = "Failed to load model: " + model_id;
         return finish();
     }
@@ -342,14 +344,32 @@ AnalyzeResult VideoContextPipeline::analyze(const AnalyzeRequest& request)
     }
 
     if (encoded == 0) {
+        transcript_fut.get();
+        result.metrics["transcript_ms"] = prep.transcript_ms;
+        result.metrics["audio_extract_ms"] = prep.transcript.audio_extract_ms;
+        result.metrics["whisper_ms"] = prep.transcript.whisper_ms;
+        result.transcript = std::move(prep.transcript);
         result.error =
             extracted == 0 ? "No frames extracted from video" : "Vision encoding failed";
         return finish();
     }
 
     result.frames_used = encoded;
-    const std::string prompt =
-        LlmRuntime::buildUserVisionPrompt(request.lang, thinking, request.prompt_mode);
+
+    // Vision encode already ran in parallel with ASR; join transcript before LLM so speech
+    // can be included in the prompt.
+    transcript_fut.get();
+    result.metrics["transcript_ms"] = prep.transcript_ms;
+    result.metrics["audio_extract_ms"] = prep.transcript.audio_extract_ms;
+    result.metrics["whisper_ms"] = prep.transcript.whisper_ms;
+    result.transcript = std::move(prep.transcript);
+
+    const std::string_view transcript_for_prompt =
+        (result.transcript.status == "ok" || result.transcript.status == "provided")
+            ? std::string_view(result.transcript.text)
+            : std::string_view{};
+    const std::string prompt = LlmRuntime::buildUserVisionPrompt(
+        request.lang, thinking, request.prompt_mode, transcript_for_prompt);
     const float temperature = request.temperature.value_or(-1.0f);
     {
         const auto t0 = Clock::now();

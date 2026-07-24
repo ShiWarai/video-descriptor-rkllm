@@ -48,10 +48,11 @@ public:
     void setThinkingSamplingDefaults(float temperature, float top_p,
                                      float presence_penalty) noexcept;
 
-    /** User multimodal prompt. prompt_mode: "simple" | "detailed". */
-    [[nodiscard]] static std::string buildUserVisionPrompt(std::string_view lang,
-                                                           bool enable_thinking,
-                                                           std::string_view prompt_mode = "detailed");
+    /** User multimodal prompt. prompt_mode: "simple" | "detailed".
+     *  Optional ASR transcript is appended before the /think switch. */
+    [[nodiscard]] static std::string buildUserVisionPrompt(
+        std::string_view lang, bool enable_thinking, std::string_view prompt_mode = "detailed",
+        std::string_view transcript = {});
 
 private:
     LLMHandle handle_ = nullptr;

@@ -87,7 +87,8 @@ bool LlmRuntime::setOutputLang(std::string_view lang)
 }
 
 std::string LlmRuntime::buildUserVisionPrompt(std::string_view lang, bool enable_thinking,
-                                              std::string_view prompt_mode)
+                                              std::string_view prompt_mode,
+                                              std::string_view transcript)
 {
     const std::string normalized = normalizeLang(lang);
     const bool simple = (prompt_mode == "simple");
@@ -98,18 +99,23 @@ std::string LlmRuntime::buildUserVisionPrompt(std::string_view lang, bool enable
                                         : "Опиши кратко и по делу видео/gif.";
     } else if (normalized == "eng") {
         prompt +=
-            "Video frames in time order. Factual only, no invention. Answer in English:\n"
+            "Describe this video from the frames in time order. Factual only, no invention. "
+            "Answer in English:\n"
             "## Summary\nWhat the clip is about.\n"
             "## Actions\nWhat changes across frames, in order.\n"
             "## On-screen text\nQuote or none.\n"
             "## Genre\nOne short label.";
     } else {
         prompt +=
-            "Кадры видео по порядку. Только факты, без выдумок. Ответ на русском:\n"
+            "Опиши это видео по кадрам по порядку. Только факты, без выдумок. Ответ на русском:\n"
             "## О чём\nСуть ролика.\n"
             "## Действия\nЧто меняется между кадрами, по порядку.\n"
             "## Текст на экране\nЦитата или «нет».\n"
             "## Жанр\nОдин ярлык.";
+    }
+    if (!transcript.empty()) {
+        prompt += (normalized == "eng") ? "\n\nSpeech in the video:\n" : "\n\nРечь на видео:\n";
+        prompt += transcript;
     }
     prompt += enable_thinking ? " /think" : " /no_think";
     return prompt;

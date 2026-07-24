@@ -93,7 +93,6 @@ def analyze():
     temperature = request.form.get("temperature", "")
     lang = request.form.get("lang", "ru")
     prompt_mode = request.form.get("prompt_mode", "detailed")
-    transcript = request.form.get("transcript", "")
     model = request.form.get("model", "")
 
     data = {
@@ -110,8 +109,6 @@ def analyze():
         data["enable_thinking"] = enable_thinking.strip()
     if temperature.strip():
         data["temperature"] = temperature.strip()
-    if transcript.strip():
-        data["transcript"] = transcript.strip()
 
     try:
         video.stream.seek(0, os.SEEK_END)

@@ -82,12 +82,35 @@ void test_config_frame_budget_and_models()
     expect(m08->top_k.has_value() && *m08->top_k == 20, "0.8b top_k override");
 }
 
+void test_config_whisper_url_and_workdir()
+{
+    const std::string json = R"({
+      "workdir": "/data/vlm",
+      "models": [
+        {"id": "m1", "vision_model": "v.rknn", "llm_model": "l.rkllm"}
+      ],
+      "pipeline": {
+        "whisper_url": "http://whisper-rknn.whisper-rknn.svc.cluster.local:8080"
+      }
+    })";
+
+    nlohmann::json j = nlohmann::json::parse(json);
+    const vlm::ServerConfig cfg = vlm::loadConfigFromJson(j);
+
+    expect(cfg.workdir == "/data/vlm", "server workdir");
+    expect(cfg.pipeline.workdir == "/data/vlm", "pipeline workdir from server");
+    expect(cfg.pipeline.whisper_url ==
+               "http://whisper-rknn.whisper-rknn.svc.cluster.local:8080",
+           "pipeline whisper_url");
+}
+
 }  // namespace
 
 int main()
 {
     test_registry_aliases_not_duplicated();
     test_config_frame_budget_and_models();
+    test_config_whisper_url_and_workdir();
     std::cout << "test_config: ok\n";
     return 0;
 }

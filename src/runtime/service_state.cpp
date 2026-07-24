@@ -8,6 +8,18 @@ void ServiceState::setModelLoaded(bool loaded) noexcept
     model_loaded_ = loaded;
 }
 
+void ServiceState::setReady(bool ready) noexcept
+{
+    std::lock_guard lock(mutex_);
+    ready_ = ready;
+}
+
+bool ServiceState::isReady() const noexcept
+{
+    std::lock_guard lock(mutex_);
+    return ready_;
+}
+
 void ServiceState::onJobStarted(const std::string& job_id, const std::string& /*model_id*/)
 {
     std::lock_guard lock(mutex_);
@@ -38,6 +50,7 @@ StatusSnapshot ServiceState::snapshot() const
     snap.current_job_id = current_job_id_;
     snap.loaded_model_id = loaded_model_id_;
     snap.model_loaded = model_loaded_;
+    snap.ready = ready_;
     snap.uptime_sec =
         std::chrono::duration<double>(std::chrono::steady_clock::now() - started_at_).count();
     if (!current_job_id_.empty()) {

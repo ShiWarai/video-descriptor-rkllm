@@ -33,6 +33,7 @@ struct ServerConfig {
     }
     if (j.contains("workdir")) {
         cfg.workdir = j["workdir"].get<std::string>();
+        cfg.pipeline.workdir = cfg.workdir;
     }
 
     if (j.contains("default_model")) {
@@ -116,6 +117,12 @@ struct ServerConfig {
     }
     if (p.contains("ffmpeg_bin_path")) {
         cfg.pipeline.ffmpeg_bin_path = p["ffmpeg_bin_path"].get<std::string>();
+    }
+    if (p.contains("workdir")) {
+        cfg.pipeline.workdir = p["workdir"].get<std::string>();
+    }
+    if (p.contains("whisper_url")) {
+        cfg.pipeline.whisper_url = p["whisper_url"].get<std::string>();
     }
     if (p.contains("enable_thinking")) {
         cfg.pipeline.enable_thinking = p["enable_thinking"].get<bool>();

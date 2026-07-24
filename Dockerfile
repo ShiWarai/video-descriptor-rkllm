@@ -37,6 +37,11 @@ RUN apt-get update && \
         curl \
         libdrm2 \
         libgomp1 \
+        libopus0 \
+        libmp3lame0 \
+        libvorbis0a \
+        libvorbisenc2 \
+        libssl3t64 \
         libopencv-core406t64 \
         libopencv-imgcodecs406t64 \
         libopencv-imgproc406t64 \

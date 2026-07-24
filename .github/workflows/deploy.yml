@@ -74,6 +74,8 @@ jobs:
             ${{ env.IMAGE_API }}:${{ github.sha }}
           push: true
           provenance: false
+          cache-from: type=gha,scope=api-prerelease
+          cache-to: type=gha,mode=max,scope=api-prerelease
 
       - name: Build and push web (prerelease)
         uses: docker/build-push-action@v6
@@ -86,3 +88,5 @@ jobs:
             ${{ env.IMAGE_WEB }}:${{ github.sha }}
           push: true
           provenance: false
+          cache-from: type=gha,scope=web-prerelease
+          cache-to: type=gha,mode=max,scope=web-prerelease

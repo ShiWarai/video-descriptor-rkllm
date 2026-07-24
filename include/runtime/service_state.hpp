@@ -15,6 +15,7 @@ struct StatusSnapshot {
     double current_job_elapsed_sec = 0.0;
     double uptime_sec = 0.0;
     bool model_loaded = false;
+    bool ready = false;
 };
 
 class ServiceState {
@@ -22,10 +23,12 @@ public:
     ServiceState() = default;
 
     void setModelLoaded(bool loaded) noexcept;
+    void setReady(bool ready) noexcept;
     void onJobStarted(const std::string& job_id, const std::string& model_id);
     void onJobFinished();
     void setLoadedModelId(const std::string& model_id);
 
+    [[nodiscard]] bool isReady() const noexcept;
     [[nodiscard]] StatusSnapshot snapshot() const;
 
 private:
@@ -36,6 +39,7 @@ private:
     std::chrono::steady_clock::time_point job_started_;
     std::chrono::steady_clock::time_point started_at_{std::chrono::steady_clock::now()};
     bool model_loaded_ = false;
+    bool ready_ = false;
 };
 
 }  // namespace vlm

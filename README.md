@@ -16,7 +16,7 @@
 | [Архитектура](#архитектура) | Пайплайн video → API |
 | [HTTP API](#http-api) | Эндпоинты |
 | [CLI](#cli) | Локальный запуск |
-| [Конфигурация](#конфигурация) | `config.json` |
+| [Конфигурация](#конфигурация) | `.env`, `config.json` |
 | [Модели](#модели) | HF, автоподгрузка |
 | [Сборка из исходников](#сборка-из-исходников) | CMake, тесты |
 | [CI/CD](#cicd) | GHCR `:main` / `:prerelease` |
@@ -33,8 +33,12 @@
 git clone https://github.com/ShiWarai/video-descriptor-rkllm.git
 cd video-descriptor-rkllm
 
-# Положите веса в `./models` или скачайте только 0.8B при старте:
-VLM_DOWNLOAD_MODELS=0.8b docker compose up -d --build
+cp .env.example .env
+# Отредактируйте .env: whisper, автоподгрузка моделей и т.д.
+
+# Положите веса в `./models` или включите автоподгрузку в .env:
+# VLM_DOWNLOAD_MODELS=0.8b
+docker compose up -d --build
 ```
 
 - **API:** http://localhost:8080 (`/health`, `/v1/models`, `/v1/video/analyze`)
@@ -43,6 +47,7 @@ VLM_DOWNLOAD_MODELS=0.8b docker compose up -d --build
 Продакшен (образы из GHCR):
 
 ```bash
+cp .env.example .env   # если ещё не создан
 docker compose -f docker-compose.yml -f docker-compose.prod.yml pull
 docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
 ```
@@ -50,6 +55,7 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
 Prerelease:
 
 ```bash
+cp .env.example .env   # если ещё не создан
 docker compose -f docker-compose.yml -f docker-compose.prerelease.yml pull
 docker compose -f docker-compose.yml -f docker-compose.prerelease.yml up -d
 ```
@@ -65,7 +71,7 @@ docker compose -f docker-compose.yml -f docker-compose.prerelease.yml up -d
 | NPU | RKNPU2 driver, устройства `/dev/mpp_service`, `/dev/rga`, `/dev/dri`, `/dev/dma_heap` |
 | Runtime | RKLLM 1.3.0+, RKNN (в `third_party/lib`) |
 | ffmpeg | vendored **ffmpeg-rockchip** (`third_party/ffmpeg-rockchip/`) |
-| Модели | не в git — volume `./models` или `VLM_DOWNLOAD_MODELS=1` |
+| Модели | не в git — volume `./models` или `VLM_DOWNLOAD_MODELS` в `.env` |
 
 ---
 
@@ -73,16 +79,30 @@ docker compose -f docker-compose.yml -f docker-compose.prerelease.yml up -d
 
 ```mermaid
 flowchart LR
-  Video[Video file] --> FFmpeg[ffmpeg-rockchip rkmpp/rkrga]
-  FFmpeg --> Frames[BGR frames]
-  Frames --> RKNN[VisionEncoder RKNN]
-  RKNN --> Tokens[Vision tokens]
-  Tokens --> RKLLM[LlmRuntime RKLLM]
+  Video[Video file] --> FrameExt[Frame extract]
+  Video --> AudioExt[Audio extract]
+  Video --> ModelLoad[Model load]
+  FrameExt --> RKNN[VisionEncoder RKNN]
+  AudioExt --> Whisper[whisper-rknn ASR]
+  ModelLoad --> RKNN
+  RKNN --> RKLLM[LlmRuntime RKLLM]
   RKLLM --> API[vlm_api_server]
+  Whisper --> API
   API --> Web[web_client Flask]
 ```
 
-Сервис: видео → кадры (ffmpeg-rockchip) → vision encoder (RKNN) → multimodal LLM (RKLLM) → **description** + **transcript** (stub / внешний ASR).
+Сервис: видео → **параллельно** кадры (ffmpeg-rockchip) + аудио → ASR ([whisper-rknn](https://github.com/ShiWarai/whisper-rknn)) + vision encoder (RKNN) → multimodal LLM (RKLLM) → **description** + **transcript**.
+
+ASR и vision encode идут параллельно. Перед генерацией описания LLM **дожидается** ASR (если `status=ok` / `provided`) и **подмешивает транскрипт в prompt** как контекст речи. В ответе API транскрипт также возвращается отдельно.
+
+**Режимы промпта** (`prompt_mode`):
+
+| Режим | Задание |
+|-------|---------|
+| `simple` | «Опиши кратко и по делу видео/gif.» |
+| `detailed` (по умолчанию в UI) | «Опиши это видео по кадрам…» + секции `## О чём` / `## Действия` / `## Текст на экране` / `## Жанр` |
+
+Промпт собирается в `LlmRuntime::buildUserVisionPrompt` (`src/core/llm_runtime.cpp`).
 
 ---
 
@@ -91,8 +111,33 @@ flowchart LR
 ### Статус
 
 ```bash
-curl -s http://localhost:8080/health
+curl -s http://localhost:8080/health   # liveness: процесс жив (status=loading|idle|busy)
+curl -s http://localhost:8080/ready    # readiness: 200 когда модели скачаны и сервис готов
 curl -s http://localhost:8080/v1/status | jq
+```
+
+При `VLM_DOWNLOAD_MODELS` сервер поднимает HTTP сразу (`/health` → 200, `status: loading`), а скачивание весов идёт в фоне startup. `web` и k8s readiness ждут `/ready` (503 до окончания загрузки).
+
+**k3s / Kubernetes probes:**
+
+```yaml
+livenessProbe:
+  httpGet:
+    path: /health
+    port: 8080
+  periodSeconds: 30
+readinessProbe:
+  httpGet:
+    path: /ready
+    port: 8080
+  periodSeconds: 15
+  failureThreshold: 40   # до ~10 мин на первую загрузку all
+startupProbe:
+  httpGet:
+    path: /ready
+    port: 8080
+  periodSeconds: 15
+  failureThreshold: 60   # до ~15 мин на первую загрузку all
 ```
 
 ### `POST /v1/video/analyze` (multipart)
@@ -143,6 +188,46 @@ LD_LIBRARY_PATH=./third_party/lib:./third_party/ffmpeg-rockchip/lib \
 
 ## Конфигурация
 
+### Docker (`.env`)
+
+Скопируйте шаблон и отредактируйте под свою среду:
+
+```bash
+cp .env.example .env
+```
+
+Docker Compose автоматически подхватывает `.env` из корня проекта. После изменений перезапустите сервисы:
+
+```bash
+docker compose up -d
+```
+
+| Переменная | Описание |
+|------------|----------|
+| `WHISPER_RKNN_URL` | URL whisper-rknn. Пусто = stub ASR без транскрипции |
+| `VLM_DOWNLOAD_MODELS` | Автоподгрузка моделей VLM: `0`, `0.8b`, `2b`, `all` |
+| `VLM_MODEL_URLS` | Свои URL весов: `имя_файла=https://...` |
+| `VLM_VERBOSE` | Подробные логи API (`1` / `0`) |
+
+`WHISPER_RKNN_URL` переопределяет `pipeline.whisper_url` из `config.json`.
+
+Пример для k3s-кластера — в `.env`:
+
+```bash
+WHISPER_RKNN_URL=http://whisper-rknn.whisper-rknn.svc.cluster.local:8080
+```
+
+Или разово без файла:
+
+```bash
+WHISPER_RKNN_URL=http://whisper-rknn.whisper-rknn.svc.cluster.local:8080 docker compose up -d api
+```
+
+Whisper health: `GET {WHISPER_RKNN_URL}/health` → `{"status":"ok"}`.  
+Transcribe: `POST {WHISPER_RKNN_URL}/transcribe` (multipart, поле `file`).
+
+### `config.json`
+
 Пример: [`config.example.json`](config.example.json). Основные поля:
 
 | Поле | Описание |
@@ -152,8 +237,7 @@ LD_LIBRARY_PATH=./third_party/lib:./third_party/ffmpeg-rockchip/lib \
 | `preload_model` | загрузить на старте (опционально) |
 | `pipeline.frame_budget` | потолок кадров (28 по умолчанию) |
 | `pipeline.ffmpeg_bin_path` | `third_party/ffmpeg-rockchip/bin` |
-
-Логи — в **stderr**. Детали RKNN/RKLLM: `"verbose": true` в `pipeline` или `--verbose`.
+| `pipeline.whisper_url` | URL whisper-rknn (пусто = stub; в Docker обычно задаётся через `.env`) |
 
 ---
 
@@ -166,7 +250,7 @@ LD_LIBRARY_PATH=./third_party/lib:./third_party/ffmpeg-rockchip/lib \
 | Qwen3.5-0.8B | `qwen3.5-0.8b_vision_rk3588.rknn` | `qwen3.5-0.8b_w8a8_rk3588.rkllm` | [HF](https://huggingface.co/Qengineering/Qwen3.5-0.8B-rk3588) |
 | Qwen3.5-2B | `qwen3.5-2b_vision_rk3588.rknn` | `qwen3.5-2b_w8a8_rk3588.rkllm` | [HF](https://huggingface.co/Qengineering/Qwen3.5-2B-rk3588) |
 
-**Автоподгрузка (opt-in):** `VLM_DOWNLOAD_MODELS=0.8b` (или `2b`, `all`, `0.8b,2b`). Свои URL: `VLM_MODEL_URLS=имя_файла=https://...`
+**Автоподгрузка (opt-in):** в `.env` задайте `VLM_DOWNLOAD_MODELS=0.8b` (или `2b`, `all`, `0.8b,2b`). Свои URL: `VLM_MODEL_URLS=имя_файла=https://...`
 
 | `VLM_DOWNLOAD_MODELS` | Что качается |
 |-----------------------|--------------|
@@ -176,7 +260,8 @@ LD_LIBRARY_PATH=./third_party/lib:./third_party/ffmpeg-rockchip/lib \
 | `all` / `1` | обе |
 
 ```bash
-VLM_DOWNLOAD_MODELS=0.8b docker compose up -d api
+# в .env: VLM_DOWNLOAD_MODELS=0.8b
+docker compose up -d api
 ```
 
 Ручная загрузка:
@@ -222,6 +307,7 @@ third_party/
 scripts/              download_models.sh, docker-entrypoint.sh
 web_client/           Flask UI
 models/               веса (volume mount)
+.env.example          шаблон переменных окружения для Docker
 ```
 
 ---

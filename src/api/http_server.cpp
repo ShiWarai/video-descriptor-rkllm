@@ -2,12 +2,15 @@
 
 #include <atomic>
 #include <chrono>
+#include <cstdlib>
 #include <filesystem>
 #include <httplib.h>
 #include <iostream>
 #include <nlohmann/json.hpp>
 #include <optional>
 #include <sstream>
+#include <string_view>
+#include <thread>
 
 #include "api/openai_handlers.hpp"
 
@@ -28,12 +31,38 @@ std::string statusToString(ServiceStatus s)
 
 nlohmann::json statusJson(const StatusSnapshot& snap)
 {
-    return {{"status", statusToString(snap.status)},
+    const std::string status = snap.ready ? statusToString(snap.status) : "loading";
+    return {{"status", status},
+            {"ready", snap.ready},
             {"current_job_id", snap.current_job_id},
             {"loaded_model_id", snap.loaded_model_id},
             {"current_job_elapsed_sec", snap.current_job_elapsed_sec},
             {"uptime_sec", snap.uptime_sec},
             {"model_loaded", snap.model_loaded}};
+}
+
+bool downloadModelsIfRequested()
+{
+    const char* download = std::getenv("VLM_DOWNLOAD_MODELS");
+    if (download == nullptr || download[0] == '\0' || std::string_view(download) == "0") {
+        return true;
+    }
+
+    const char* app_dir = std::getenv("APP_DIR");
+    const char* models_dir = std::getenv("MODELS_DIR");
+    const std::string app = app_dir != nullptr ? app_dir : "/app";
+    const std::string models = models_dir != nullptr ? models_dir : "/app/models";
+    const char* model_urls = std::getenv("VLM_MODEL_URLS");
+
+    std::string cmd = "MODELS_DIR=\"" + models + "\" VLM_DOWNLOAD_MODELS=\"" +
+                      std::string(download) + "\"";
+    if (model_urls != nullptr && model_urls[0] != '\0') {
+        cmd += " VLM_MODEL_URLS=\"" + std::string(model_urls) + "\"";
+    }
+    cmd += " \"" + app + "/scripts/download_models.sh\"";
+
+    std::cerr << "startup: downloading models (" << download << ") into " << models << '\n';
+    return std::system(cmd.c_str()) == 0;
 }
 
 std::string makeJobId()
@@ -117,6 +146,23 @@ AnalyzeResult HttpServer::runInference(AnalyzeRequest request)
     return result;
 }
 
+void HttpServer::runStartup()
+{
+    if (!downloadModelsIfRequested()) {
+        std::cerr << "startup: model download failed\n";
+        return;
+    }
+
+    if (!pipeline_->initialize(config_.preload_model_id)) {
+        std::cerr << "startup: pipeline initialization failed\n";
+        return;
+    }
+
+    state_->setLoadedModelId(pipeline_->loadedModelId());
+    state_->setReady(true);
+    std::cerr << "startup: service ready\n";
+}
+
 void HttpServer::run()
 {
     clearWorkdir(config_.workdir);
@@ -125,7 +171,7 @@ void HttpServer::run()
     httplib::Server svr;
 
     svr.set_logger([](const httplib::Request& req, const httplib::Response& res) {
-        if (req.path == "/health") {
+        if (req.path == "/health" || req.path == "/ready" || req.path == "/v1/status") {
             return;
         }
         std::cerr << req.method << ' ' << req.path << " -> " << res.status << '\n';
@@ -136,11 +182,22 @@ void HttpServer::run()
         res.set_content(statusJson(state_->snapshot()).dump(), "application/json");
     });
 
+    svr.Get("/ready", [this](const httplib::Request&, httplib::Response& res) {
+        const auto snap = state_->snapshot();
+        res.status = snap.ready ? 200 : 503;
+        res.set_content(statusJson(snap).dump(), "application/json");
+    });
+
     svr.Get("/v1/status", [this](const httplib::Request&, httplib::Response& res) {
         res.set_content(statusJson(state_->snapshot()).dump(), "application/json");
     });
 
     svr.Get("/v1/models", [this](const httplib::Request&, httplib::Response& res) {
+        if (!state_->isReady()) {
+            res.status = 503;
+            res.set_content(R"({"error":"service starting"})", "application/json");
+            return;
+        }
         nlohmann::json data = nlohmann::json::array();
         for (const auto& model : pipeline_->registry().models()) {
             data.push_back({{"id", model.id},
@@ -153,6 +210,11 @@ void HttpServer::run()
     });
 
     svr.Post("/v1/chat/completions", [this](const httplib::Request& req, httplib::Response& res) {
+        if (!state_->isReady()) {
+            res.status = 503;
+            res.set_content(R"({"error":"service starting"})", "application/json");
+            return;
+        }
         std::cerr << "POST /v1/chat/completions received (" << req.body.size() << " bytes)\n";
 
         nlohmann::json body;
@@ -204,6 +266,11 @@ void HttpServer::run()
     });
 
     svr.Post("/v1/video/analyze", [this](const httplib::Request& req, httplib::Response& res) {
+        if (!state_->isReady()) {
+            res.status = 503;
+            res.set_content(R"({"error":"service starting"})", "application/json");
+            return;
+        }
         std::cerr << "POST /v1/video/analyze received";
         if (req.has_file("file")) {
             std::cerr << " file=" << req.get_file_value("file").filename;
@@ -283,8 +350,17 @@ void HttpServer::run()
         res.set_content(analyzeResultToJson(result).dump(), "application/json");
     });
 
+    if (!svr.bind_to_port(config_.host.c_str(), config_.port)) {
+        std::cerr << "Failed to bind " << config_.host << ':' << config_.port << '\n';
+        return;
+    }
+
     std::cerr << "vlm_api_server listening on " << config_.host << ':' << config_.port << '\n';
-    svr.listen(config_.host.c_str(), config_.port);
+    std::thread server_thread([&] { svr.listen_after_bind(); });
+
+    runStartup();
+
+    server_thread.join();
 }
 
 }  // namespace vlm

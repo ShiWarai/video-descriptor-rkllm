@@ -9,8 +9,10 @@ namespace vlm {
 
 struct TranscriptResult {
     std::string text;
-    std::string status;  // "provided" | "stub"
+    std::string status;  // "provided" | "stub" | "ok" | "error"
     std::optional<std::string> language;
+    double audio_extract_ms = 0;
+    double whisper_ms = 0;
 };
 
 struct AnalyzeRequest {
@@ -60,6 +62,8 @@ struct PipelineConfig {
     float thinking_top_p = 0.95f;
     float thinking_presence_penalty = 0.0f;
     std::string ffmpeg_bin_path = "third_party/ffmpeg-rockchip/bin";
+    std::string workdir = "/tmp/vlm_work";
+    std::string whisper_url;
     bool enable_thinking = false;
     bool verbose = false;
 };
