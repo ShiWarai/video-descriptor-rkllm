@@ -7,4 +7,3 @@ models/
 *.log
 .env
 .cursor/
-docker-compose.override.yml

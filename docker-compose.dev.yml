@@ -1,0 +1,19 @@
+# Dev/test container only (unit tests, no NPU, no model weights).
+# Usage:
+#   docker compose -f docker-compose.dev.yml build
+#   docker compose -f docker-compose.dev.yml run --rm test
+#
+# Local runtime (API + web on RK3588): use docker-compose.yml (+ prod/prerelease overlays).
+
+name: video-descriptor-rkllm-dev
+
+services:
+  test:
+    image: video-descriptor-rkllm-builder
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: builder
+    container_name: video-descriptor-rkllm-test
+    working_dir: /app
+    command: ["ctest", "--test-dir", "/app/build", "--output-on-failure"]
