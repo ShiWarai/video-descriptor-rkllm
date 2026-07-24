@@ -10,3 +10,4 @@ models/*.part
 *.log
 .env
 .cursor/
+docker-compose.override.yml

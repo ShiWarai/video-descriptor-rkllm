@@ -33,8 +33,15 @@
 git clone https://github.com/ShiWarai/video-descriptor-rkllm.git
 cd video-descriptor-rkllm
 
-# Положите веса в ./models (см. models/README.md) или включите автоподгрузку:
-VLM_DOWNLOAD_MODELS=1 docker compose up -d --build
+# Положите веса в `./models` или скачайте только 0.8B при старте:
+VLM_DOWNLOAD_MODELS=0.8b docker compose up -d --build
+```
+
+Если в `./models` симлинки на веса вне репозитория — скопируйте `docker-compose.override.example.yml` → `docker-compose.override.yml` и поправьте путь к каталогу с `.rknn`/`.rkllm` на хосте.
+
+```bash
+cp docker-compose.override.example.yml docker-compose.override.yml
+docker compose up -d --build
 ```
 
 - **API:** http://localhost:8080 (`/health`, `/v1/models`, `/v1/video/analyze`)
@@ -166,10 +173,10 @@ LD_LIBRARY_PATH=./third_party/lib:./third_party/ffmpeg-rockchip/lib \
 | Qwen3.5-0.8B | [Qengineering/Qwen3.5-0.8B-rk3588](https://huggingface.co/Qengineering/Qwen3.5-0.8B-rk3588) |
 | Qwen3.5-2B | [Qengineering/Qwen3.5-2B-rk3588](https://huggingface.co/Qengineering/Qwen3.5-2B-rk3588) |
 
-**Автоподгрузка (opt-in):** при старте контейнера, если файлов нет:
+**Автоподгрузка (opt-in):** `VLM_DOWNLOAD_MODELS=0.8b` (или `2b`, `all`, `0.8b,2b`). Свои URL: `VLM_MODEL_URLS=имя_файла=https://...` — см. [`models/README.md`](models/README.md).
 
 ```bash
-VLM_DOWNLOAD_MODELS=1 docker compose up -d api
+VLM_DOWNLOAD_MODELS=0.8b docker compose up -d api
 ```
 
 Или вручную:

@@ -7,6 +7,7 @@ services:
       context: .
       dockerfile: Dockerfile
     container_name: video-descriptor-rkllm-api
+    privileged: true
     ports:
       - "8080:8080"
     volumes:
@@ -18,6 +19,7 @@ services:
       - /dev/dma_heap:/dev/dma_heap
     environment:
       VLM_DOWNLOAD_MODELS: "${VLM_DOWNLOAD_MODELS:-0}"
+      VLM_MODEL_URLS: "${VLM_MODEL_URLS:-}"
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/health"]

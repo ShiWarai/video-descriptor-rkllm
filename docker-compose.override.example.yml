@@ -1,0 +1,13 @@
+# Copy to docker-compose.override.yml for local dev (file is gitignored).
+# Docker Compose loads override automatically: docker compose up -d
+#
+# Use when ./models contains symlinks to weights outside the repo, e.g.:
+#   models/*.rknn -> /root/rknn-llm/models/...
+#
+# Edit RKNN_LLM_MODELS_HOST to match your host path, or place real files in ./models
+# / use VLM_DOWNLOAD_MODELS=1 instead.
+
+services:
+  api:
+    volumes:
+      - /root/rknn-llm/models:/root/rknn-llm/models:ro

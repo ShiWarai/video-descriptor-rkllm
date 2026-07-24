@@ -11,26 +11,43 @@ Place RK3588 NPU binaries here or mount this directory into the container at `/a
 
 ## Download from Hugging Face
 
-- [Qengineering/Qwen3.5-0.8B-rk3588](https://huggingface.co/Qengineering/Qwen3.5-0.8B-rk3588)
-- [Qengineering/Qwen3.5-2B-rk3588](https://huggingface.co/Qengineering/Qwen3.5-2B-rk3588)
+- [Qwen3.5-0.8B-rk3588](https://huggingface.co/Qengineering/Qwen3.5-0.8B-rk3588)
+- [Qwen3.5-2B-rk3588](https://huggingface.co/Qengineering/Qwen3.5-2B-rk3588)
 
-On Hugging Face, vision files use a hyphen (`…-vision_rk3588.rknn`). This project expects an underscore (`…_vision_rk3588.rknn`) — rename after download or use the script below.
+On Hugging Face, filenames match `config.json` (e.g. `qwen3.5-0.8b_vision_rk3588.rknn`).
 
 ## Automatic download (opt-in)
 
-Set `VLM_DOWNLOAD_MODELS=1` when starting the API container. The entrypoint checks for missing files and downloads only what is absent:
+Set `VLM_DOWNLOAD_MODELS` when starting the API container. The entrypoint downloads **only** the selected weights (skips files that already exist).
+
+| `VLM_DOWNLOAD_MODELS` | Что качается |
+|-----------------------|--------------|
+| `0` / не задано | ничего |
+| `0.8b` | только 0.8B (vision + llm) |
+| `2b` | только 2B |
+| `0.8b,2b` или `all` / `1` | обе модели |
 
 ```bash
-VLM_DOWNLOAD_MODELS=1 docker compose up -d api
+VLM_DOWNLOAD_MODELS=0.8b docker compose up -d api
 ```
 
-Or run the script manually:
+### Свой URL (произвольный адрес файла)
+
+`VLM_MODEL_URLS` — список через запятую: `имя_файла_в_models=URL`
 
 ```bash
-MODELS_DIR=./models ./scripts/download_models.sh
+VLM_DOWNLOAD_MODELS=0.8b \
+VLM_MODEL_URLS="qwen3.5-0.8b_w8a8_rk3588.rkllm=https://huggingface.co/Qengineering/Qwen3.5-0.8B-rk3588/resolve/main/qwen3.5-0.8b_w8a8_rk3588.rkllm" \
+docker compose up -d api
 ```
 
-Without `VLM_DOWNLOAD_MODELS=1`, the container starts immediately and expects weights to already be present in `./models`.
+Можно комбинировать: пресет `0.8b` + дополнительные пары в `VLM_MODEL_URLS`. Для каталога HF по умолчанию: `VLM_HF_BASE=https://huggingface.co/Qengineering`.
+
+Ручной запуск:
+
+```bash
+MODELS_DIR=./models ./scripts/download_models.sh 0.8b
+```
 
 ## Requirements
 
