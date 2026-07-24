@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
     inputs:
       publish_prerelease:
-        description: "Собрать и опубликовать prerelease-образы в GHCR (тег :prerelease)"
+        description: "Собрать и опубликовать предварительный образ в GHCR (тег :prerelease)"
         required: false
         default: false
         type: boolean
