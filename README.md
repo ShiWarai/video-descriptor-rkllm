@@ -37,13 +37,6 @@ cd video-descriptor-rkllm
 VLM_DOWNLOAD_MODELS=0.8b docker compose up -d --build
 ```
 
-Если в `./models` симлинки на веса вне репозитория — скопируйте `docker-compose.override.example.yml` → `docker-compose.override.yml` и поправьте путь к каталогу с `.rknn`/`.rkllm` на хосте.
-
-```bash
-cp docker-compose.override.example.yml docker-compose.override.yml
-docker compose up -d --build
-```
-
 - **API:** http://localhost:8080 (`/health`, `/v1/models`, `/v1/video/analyze`)
 - **Web UI:** http://localhost:5000
 
@@ -203,6 +196,13 @@ make -j$(nproc)
 ctest --output-on-failure
 ```
 
+Или unit-тесты в Docker (как в CI, без NPU/моделей):
+
+```bash
+docker compose -f docker-compose.dev.yml build
+docker compose -f docker-compose.dev.yml run --rm test
+```
+
 Артефакты: `build/vlm_api_server`, `build/VLM_VIDEO_NPU`.
 
 ```bash
@@ -230,7 +230,7 @@ models/               веса (volume mount)
 
 | Workflow | Триггер | Результат |
 |----------|---------|-----------|
-| **Deploy** | push `main` / `dev` | unit-тесты в Docker (`ubuntu-24.04-arm`) |
+| **Deploy** | push `main` / `dev` | `docker-compose.dev.yml` → build + `ctest` (`ubuntu-24.04-arm`) |
 | **Deploy → prerelease** | push `dev` с `[prerelease]` или manual `publish_prerelease` | `ghcr.io/shiwarai/video-descriptor-rkllm:prerelease` (+ web) |
 | **Publish** | успешный Deploy на `main` | `:main` и `:${sha}` |
 

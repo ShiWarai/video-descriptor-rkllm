@@ -29,22 +29,10 @@ jobs:
         with:
           driver: docker
 
-      - name: Build test image
-        uses: docker/build-push-action@v6
-        env:
-          DOCKER_BUILD_RECORD_UPLOAD: false
-        with:
-          context: .
-          file: ./Dockerfile
-          target: builder
-          tags: video-descriptor-rkllm-builder:latest
-          load: true
-          push: false
-
-      - name: Run unit tests in container
+      - name: Build and run unit tests
         run: |
-          docker run --rm video-descriptor-rkllm-builder:latest \
-            ctest --test-dir /app/build --output-on-failure
+          docker compose -f docker-compose.dev.yml build
+          docker compose -f docker-compose.dev.yml run --rm test
 
   publish-prerelease:
     name: Publish prerelease images to GHCR
