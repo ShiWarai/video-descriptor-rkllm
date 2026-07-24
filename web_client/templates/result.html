@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Результат — Qwen3-VL</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  <main class="container">
+    <header>
+      <h1>Результат анализа</h1>
+      <p><a href="{{ url_for('index') }}">← Назад</a></p>
+    </header>
+
+    {% if not ok %}
+      <section class="card error-box">
+        <h2>Ошибка</h2>
+        <p>{{ error or result.get('error', 'Неизвестная ошибка') }}</p>
+      </section>
+    {% else %}
+      <section class="card">
+        <h2>Описание</h2>
+        <p class="description">{{ result.description }}</p>
+      </section>
+
+      <section class="card">
+        <h2>Транскрипт</h2>
+        <p class="muted">status: {{ result.transcript.status }}</p>
+        <p>{{ result.transcript.text or '—' }}</p>
+      </section>
+
+      <section class="card">
+        <h2>Время расчёта</h2>
+        {% set metrics = result.get('metrics') or {} %}
+        {% if metrics %}
+          {% set total = metrics.get('wall_ms', metrics.get('total_ms')) %}
+          {% if total is not none %}
+            <p class="metrics-total">
+              Итого: <strong>{{ '%.1f'|format(total) }} ms</strong>
+              ({{ '%.2f'|format(total / 1000) }} s)
+            </p>
+          {% endif %}
+          {% if metrics.get('truncated') %}
+            <p class="error">
+              Ответ обрезан по max_tokens
+              (generate_tokens={{ metrics.get('generate_tokens') }},
+              limit={{ metrics.get('max_new_tokens') }}).
+              Это hard-stop RKLLM, не «краткость».
+            </p>
+          {% endif %}
+          <table class="metrics-table">
+            <thead>
+              <tr><th>Этап</th><th>ms</th><th>%</th></tr>
+            </thead>
+            <tbody>
+              {% set stage_order = [
+                ('queue_wait_ms', 'Ожидание в очереди'),
+                ('model_load_ms', 'Загрузка модели'),
+                ('transcript_ms', 'Транскрипт'),
+                ('frame_extract_ms', 'Извлечение кадров'),
+                ('vision_encode_ms', 'Vision encode'),
+                ('llm_generate_ms', 'LLM генерация'),
+                ('generate_tokens', 'Сгенерировано токенов'),
+                ('max_new_tokens', 'Лимит max_new_tokens'),
+                ('total_ms', 'Пайплайн (total)'),
+                ('wall_ms', 'Wall (с очередью)'),
+              ] %}
+              {% set base = metrics.get('wall_ms') or metrics.get('total_ms') or 0 %}
+              {% for key, label in stage_order %}
+                {% if key in metrics %}
+                  {% set val = metrics[key] %}
+                  <tr class="{% if key in ('total_ms', 'wall_ms') %}metrics-sum{% endif %}">
+                    <td>{{ label }}</td>
+                    <td>
+                      {% if key in ('generate_tokens', 'max_new_tokens', 'truncated') %}
+                        {{ '%.0f'|format(val) }}
+                      {% else %}
+                        {{ '%.1f'|format(val) }}
+                      {% endif %}
+                    </td>
+                    <td>
+                      {% if base and key not in ('total_ms', 'wall_ms', 'generate_tokens', 'max_new_tokens', 'truncated') %}
+                        {{ '%.0f'|format(100.0 * val / base) }}%
+                      {% else %}
+                        —
+                      {% endif %}
+                    </td>
+                  </tr>
+                {% endif %}
+              {% endfor %}
+              {% for key, val in metrics.items() %}
+                {% if key not in [
+                  'queue_wait_ms','model_load_ms','transcript_ms','frame_extract_ms',
+                  'vision_encode_ms','llm_generate_ms','generate_tokens','max_new_tokens',
+                  'truncated','total_ms','wall_ms'
+                ] %}
+                  <tr>
+                    <td>{{ key }}</td>
+                    <td>{{ '%.1f'|format(val) }}</td>
+                    <td>—</td>
+                  </tr>
+                {% endif %}
+              {% endfor %}
+            </tbody>
+          </table>
+        {% else %}
+          <p class="muted">Метрики не пришли от API</p>
+        {% endif %}
+      </section>
+
+      <section class="card">
+        <h2>Метаданные</h2>
+        <dl>
+          <div><dt>frames_used</dt><dd>{{ result.frames_used }}</dd></div>
+          <div><dt>frame_budget</dt><dd>{{ result.frame_budget }}</dd></div>
+          <div><dt>duration_sec</dt><dd>{{ result.duration_sec }}</dd></div>
+        </dl>
+      </section>
+
+      <section class="card">
+        <h2>JSON</h2>
+        <pre>{{ result_json }}</pre>
+      </section>
+    {% endif %}
+  </main>
+</body>
+</html>

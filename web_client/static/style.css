@@ -1,0 +1,127 @@
+:root {
+  color-scheme: light dark;
+  --bg: #0f1419;
+  --card: #1a2332;
+  --text: #e8eef7;
+  --muted: #9aa8bc;
+  --accent: #4f8cff;
+  --error: #ff6b6b;
+  --border: #2a3648;
+  font-family: system-ui, -apple-system, sans-serif;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: linear-gradient(160deg, #0b1020, #121a2b);
+  color: var(--text);
+  min-height: 100vh;
+}
+
+.container {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 2rem 1rem 3rem;
+}
+
+header h1 { margin: 0 0 0.25rem; }
+
+.muted { color: var(--muted); }
+
+.card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 1.25rem;
+  margin-top: 1rem;
+}
+
+label {
+  display: block;
+  margin-bottom: 1rem;
+}
+
+input, textarea, select, button {
+  width: 100%;
+  margin-top: 0.35rem;
+  padding: 0.65rem 0.75rem;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: #0f1724;
+  color: var(--text);
+}
+
+button {
+  background: var(--accent);
+  border: none;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.row {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.75rem;
+}
+
+dl {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.5rem 1rem;
+}
+
+dt { color: var(--muted); }
+dd { margin: 0; }
+
+.description {
+  white-space: pre-wrap;
+  line-height: 1.5;
+}
+
+.metrics-total {
+  margin: 0 0 0.75rem;
+  font-size: 1.05rem;
+}
+
+.metrics-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.95rem;
+}
+
+.metrics-table th,
+.metrics-table td {
+  text-align: left;
+  padding: 0.4rem 0.5rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.metrics-table th:nth-child(2),
+.metrics-table td:nth-child(2),
+.metrics-table th:nth-child(3),
+.metrics-table td:nth-child(3) {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.metrics-table tr.metrics-sum td {
+  font-weight: 600;
+  border-top: 1px solid var(--muted);
+}
+
+pre {
+  overflow: auto;
+  background: #0b111c;
+  padding: 1rem;
+  border-radius: 8px;
+  font-size: 0.85rem;
+}
+
+.error, .error-box { color: var(--error); }
+
+a { color: var(--accent); }
+
+@media (max-width: 640px) {
+  .row { grid-template-columns: 1fr; }
+}

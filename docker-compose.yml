@@ -1,0 +1,43 @@
+name: video-descriptor-rkllm
+
+services:
+  api:
+    image: video-descriptor-rkllm
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: video-descriptor-rkllm-api
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./models:/app/models
+    devices:
+      - /dev/mpp_service:/dev/mpp_service
+      - /dev/rga:/dev/rga
+      - /dev/dri:/dev/dri
+      - /dev/dma_heap:/dev/dma_heap
+    environment:
+      VLM_DOWNLOAD_MODELS: "${VLM_DOWNLOAD_MODELS:-0}"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  web:
+    image: video-descriptor-rkllm-web
+    build:
+      context: .
+      dockerfile: Dockerfile.web
+    container_name: video-descriptor-rkllm-web
+    ports:
+      - "5000:5000"
+    environment:
+      VLM_API_URL: http://api:8080
+      WEB_CLIENT_DEBUG: "0"
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped

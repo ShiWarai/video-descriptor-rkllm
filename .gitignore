@@ -1,0 +1,12 @@
+build/
+web_client/.venv/
+web_client/__pycache__/
+**/__pycache__/
+**/*.pyc
+models/*.rknn
+models/*.rkllm
+models/*.part
+!models/.gitkeep
+*.log
+.env
+.cursor/

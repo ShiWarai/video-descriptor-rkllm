@@ -1,0 +1,8 @@
+services:
+  api:
+    image: ghcr.io/shiwarai/video-descriptor-rkllm:main
+    build: !override null
+
+  web:
+    image: ghcr.io/shiwarai/video-descriptor-rkllm-web:main
+    build: !override null
