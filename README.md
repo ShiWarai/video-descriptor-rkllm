@@ -280,7 +280,7 @@ docker compose up -d
 | `VLM_DOWNLOAD_MODELS` | Автоподгрузка моделей VLM: `0`, `0.8b`, `2b`, `4b`, `all` |
 | `VLM_MODEL_URLS` | Свои URL весов: `имя_файла=https://...` |
 | `VLM_VERBOSE` | Подробные логи API (`1` / `0`) |
-| `VLM_FIX_FREQ` | При старте API: NPU + CPU + LPDDR4 + GPU на максимум (`1` / `0`, см. `scripts/fix_freq_rk3588.sh`) |
+| `VLM_FIX_FREQ` | При старте API: NPU + CPU + LPDDR4 на максимум (`1` / `0`, см. `scripts/fix_freq_rk3588.sh`). GPU — отдельно через `VLM_FIX_GPU_FREQ` |
 | `VLM_FIX_GPU_FREQ` | Зафиксировать Mali GPU (`1` / `0`, по умолчанию `1`; `0` — только NPU/CPU/DDR) |
 
 `VLM_FIX_FREQ` нужен `privileged: true` в compose (уже включён) — пишет в host sysfs. Частоты берутся как **максимум** из `available_frequencies` (Orange Pi 5: big CPU ≈ 2256 MHz, DDR ≈ 2112 MHz, GPU/NPU ≈ 1 GHz).
@@ -368,7 +368,9 @@ make -j$(nproc)
 ctest --output-on-failure
 ```
 
-Unit-тесты (без NPU/моделей): `test_config`, `test_frame_plan`, `test_frame_extractor`, `test_rgb_frame`, `test_model_registry`, `test_text_util`, `test_thinking_control`, `test_workdir` — конфиг, план кадров, libav extract (fixtures в `tests/fixtures/`), `RgbFrame`, промпты, strip thinking-тегов.
+Unit-тесты (без NPU/моделей): `test_config`, `test_frame_plan`, `test_frame_extractor`, `test_rgb_frame`, `test_model_registry`, `test_text_util`, `test_thinking_control`, `test_workdir` — конфиг, план кадров, libav probe + GIF extract (fixtures в `tests/fixtures/`), `RgbFrame`, промпты, strip thinking-тегов. Декод mp4 через rkmpp в `test_frame_extractor` выполняется только при наличии `/dev/mpp_service` (в CI пропускается).
+
+Сборка встраивает RPATH к vendored `.so` (`third_party/lib`, `ffmpeg-rockchip/lib`); `LD_LIBRARY_PATH` для локального запуска бинарников из `build/` обычно не нужен.
 
 Или unit-тесты в Docker (как в CI, без NPU/моделей):
 

@@ -3,7 +3,7 @@
 #   docker compose -f docker-compose.dev.yml build
 #   docker compose -f docker-compose.dev.yml run --rm test
 # CI builds the image via docker/build-push-action with GHA cache, then runs:
-#   docker run --rm --workdir /app video-descriptor-rkllm-builder sh -c '...'
+#   docker run --rm --workdir /app video-descriptor-rkllm-builder sh -c 'cmake -B build ... && ctest ...'
 #
 # Local runtime (API + web on RK3588): use docker-compose.yml (+ prod/prerelease overlays).
 
@@ -18,4 +18,4 @@ services:
       target: builder
     container_name: video-descriptor-rkllm-test
     working_dir: /app
-    command: ["sh", "-c", "cmake --build build -j\"$$(nproc)\" && ctest --test-dir /app/build --output-on-failure"]
+    command: ["sh", "-c", "cmake -B build -DCMAKE_BUILD_TYPE=Release && cmake --build build -j\"$$(nproc)\" && ctest --test-dir /app/build --output-on-failure"]
