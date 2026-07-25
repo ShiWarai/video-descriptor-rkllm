@@ -397,7 +397,7 @@ models/               веса (volume mount)
 
 | Workflow | Триггер | Результат |
 |----------|---------|-----------|
-| **Deploy** | push `main` / `dev`, или manual | `ctest` в Docker (`ubuntu-24.04-arm`, timeout 90 мин) |
+| **Deploy** | push `main` / `dev`, или manual | `ctest` в Docker (`ubuntu-24.04-arm`, timeout 90 мин); builder-кэш в GHA (`scope=builder`) |
 | **Deploy → prerelease** | push `dev` с `[prerelease]` или manual `publish_prerelease` | `:prerelease` + `:${sha}` в GHCR (API + web) |
 | **Deploy → notify-telegram** | после test / prerelease | уведомление в Telegram (см. ниже) |
 | **Publish** | успешный Deploy на `main` | `:main` и `:${sha}` (отдельный workflow) |
