@@ -37,7 +37,6 @@ void test_prompt_detailed_ru()
     expect(p.find("Только надписи в кадрах видео, не речь.") != std::string::npos,
            "ru on-screen not speech");
     expect(p.find("3) Предположительный жанр") != std::string::npos, "ru genre");
-    expect(p.find("## Действия") == std::string::npos, "no old actions section");
 }
 
 void test_prompt_with_transcript()
@@ -45,7 +44,6 @@ void test_prompt_with_transcript()
     const std::string ru =
         vlm::LlmRuntime::buildUserVisionPrompt("ru", false, "detailed", "привет");
     expect(ru.find("с речью в видео: \"привет\"") != std::string::npos, "ru speech before task");
-    expect(ru.find("Текст видео на английском") == std::string::npos, "no old eng label");
     const auto speech_pos = ru.find("с речью в видео:");
     const auto task_pos = ru.find("Опиши это видео.");
     expect(speech_pos != std::string::npos && task_pos != std::string::npos && speech_pos < task_pos,

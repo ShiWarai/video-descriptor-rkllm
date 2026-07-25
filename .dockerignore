@@ -11,5 +11,3 @@ models/
 *.mkv
 *.avi
 .env
-*.md
-docs/

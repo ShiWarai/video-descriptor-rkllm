@@ -75,7 +75,6 @@ RUN apt-get update && \
         ca-certificates \
         cmake \
         g++ \
-        pkg-config \
         zlib1g-dev \
       && break; \
       echo "apt install failed (attempt ${attempt}), retrying..."; \
@@ -95,10 +94,9 @@ COPY third_party ./third_party
 
 RUN cmake -B build -DCMAKE_BUILD_TYPE=Release \
         -DCMAKE_PREFIX_PATH=/opt/opencv \
-    && cmake --build build -j"$(nproc)" \
+    && cmake --build build -j"$(nproc)" --target vlm_api_server \
     && strip --strip-unneeded \
         build/vlm_api_server \
-        build/VLM_VIDEO_NPU \
         third_party/lib/*.so \
         third_party/ffmpeg-rockchip/bin/ffmpeg \
         third_party/ffmpeg-rockchip/bin/ffprobe \

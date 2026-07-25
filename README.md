@@ -14,7 +14,7 @@
 | [Быстрый старт](#быстрый-старт) | Docker Compose на RK3588 |
 | [Требования](#требования) | Железо, драйверы, модели |
 | [Архитектура](#архитектура) | Пайплайн video → API |
-| [HTTP API](#http-api) | Эндпоинты |
+| [HTTP API](#http-api) | Эндпоинты, параметры, ответ |
 | [CLI](#cli) | Локальный запуск |
 | [Конфигурация](#конфигурация) | `.env`, `config.json` |
 | [Модели](#модели) | HF, автоподгрузка |
@@ -41,10 +41,12 @@ cp .env.example .env
 docker compose up -d --build
 ```
 
-- **API:** http://localhost:8080 (`/health`, `/v1/models`, `/v1/video/analyze`)
-- **Web UI:** http://localhost:5000
+- **API:** http://localhost:8080 (`/health`, `/ready`, `/v1/models`, `/v1/video/analyze`)
+- **Web UI:** http://localhost:5000 — загрузка видео, описание, транскрипт, метрики времени (в «Итого» также токены/лимит)
 
-Продакшен (образы из GHCR):
+Логи: `docker compose logs -f api` (или `web`). При `VLM_VERBOSE=1` в `.env` API печатает prompt и stream в stderr.
+
+Продакшен (образы из GHCR, ~224 MB на сервис, linux/arm64):
 
 ```bash
 cp .env.example .env   # если ещё не создан
@@ -105,6 +107,10 @@ ASR и vision encode идут параллельно. Перед генерац�
 
 Тексты промптов — в `include/core/vision_prompts.hpp`; сборка через `LlmRuntime::buildUserVisionPrompt`.
 
+**Whisper:** внешний [whisper-rknn](https://github.com/ShiWarai/whisper-rknn). URL задаётся в `.env` (`WHISPER_RKNN_URL`). Пусто — stub (`transcript.status=stub`).
+
+**Метрики времени:** этапы `transcript_ms`, `frame_extract_ms`, `vision_encode_ms` и др. считаются **по отдельности** (wall каждого потока). В UI проценты от `wall_ms` могут суммироваться >100% — этапы частично идут **параллельно**, это нормально.
+
 ---
 
 ## HTTP API
@@ -143,14 +149,39 @@ startupProbe:
 
 ### `POST /v1/video/analyze` (multipart)
 
+Поля формы:
+
+| Поле | По умолчанию | Описание |
+|------|--------------|----------|
+| `file` | — | Видеофайл (обязательно) |
+| `model` | из `config.json` | `qwen3.5-0.8b-video` / `qwen3.5-2b-video` |
+| `frames` | 8 | Сколько кадров запросить |
+| `frame_budget` | из config | Потолок кадров с учётом контекста |
+| `max_tokens` | из config | Лимит генерации LLM |
+| `lang` | `ru` | `ru` или `eng` (язык ответа) |
+| `prompt_mode` | `detailed` | `simple` \| `detailed` |
+| `enable_thinking` | из config | `true` / `false` / `1` / `0` |
+| `temperature` | из config | override sampling |
+| `transcript` | — | готовый текст ASR (пропустить whisper) |
+
 ```bash
 curl -s http://localhost:8080/v1/video/analyze \
   -F "file=@test_video.mp4" \
   -F "model=qwen3.5-0.8b-video" \
   -F "frames=8" \
   -F "frame_budget=28" \
-  -F "lang=ru" | jq
+  -F "lang=ru" \
+  -F "prompt_mode=detailed" | jq
 ```
+
+Ответ (основные поля):
+
+| Поле | Описание |
+|------|----------|
+| `description` | Текст описания от VLM |
+| `transcript` | `{ "text", "status" }` — ASR или stub |
+| `metrics` | `wall_ms`, `transcript_ms`, `vision_encode_ms`, `llm_generate_ms`, `generate_tokens`, … |
+| `frames_used`, `frame_budget`, `duration_sec` | метаданные пайплайна |
 
 ### `POST /v1/chat/completions` (OpenAI-compatible + `video_url`)
 
@@ -165,9 +196,11 @@ curl -s http://localhost:8080/v1/chat/completions \
         {"type": "video_url", "video_url": {"url": "file:///app/test_video.mp4"}}
       ]
     }],
-    "extra_body": {"frames": 8, "frame_budget": 28, "lang": "ru"}
+    "extra_body": {"frames": 8, "frame_budget": 28, "lang": "ru", "prompt_mode": "detailed"}
   }' | jq
 ```
+
+`extra_body` также принимает `enable_thinking`, `max_tokens`, `temperature`, `transcript`.
 
 ### `GET /v1/models`
 
@@ -177,6 +210,13 @@ curl -s http://localhost:8080/v1/chat/completions \
 
 ## CLI
 
+Локальная сборка (нужен `libopencv-dev` на хосте):
+
+```bash
+mkdir -p build && cd build
+cmake .. && make -j$(nproc)
+```
+
 ```bash
 LD_LIBRARY_PATH=./third_party/lib:./third_party/ffmpeg-rockchip/lib \
   ./build/VLM_VIDEO_NPU \
@@ -184,6 +224,8 @@ LD_LIBRARY_PATH=./third_party/lib:./third_party/ffmpeg-rockchip/lib \
   models/qwen3.5-0.8b_w8a8_rk3588.rkllm \
   test_video.mp4 --context 8192 --frames 20 --verbose
 ```
+
+В Docker runtime-образе только `vlm_api_server` (CLI `VLM_VIDEO_NPU` не копируется).
 
 ---
 
@@ -197,7 +239,7 @@ LD_LIBRARY_PATH=./third_party/lib:./third_party/ffmpeg-rockchip/lib \
 cp .env.example .env
 ```
 
-Docker Compose автоматически подхватывает `.env` из корня проекта. После изменений перезапустите сервисы:
+Docker Compose автоматически подхватывает `.env` из корня проекта (файл в `.gitignore`, в git не коммитится). После изменений перезапустите сервисы:
 
 ```bash
 docker compose up -d
@@ -238,7 +280,9 @@ Transcribe: `POST {WHISPER_RKNN_URL}/transcribe` (multipart, поле `file`).
 | `preload_model` | загрузить на старте (опционально) |
 | `pipeline.frame_budget` | потолок кадров (28 по умолчанию) |
 | `pipeline.ffmpeg_bin_path` | `third_party/ffmpeg-rockchip/bin` |
-| `pipeline.whisper_url` | URL whisper-rknn (пусто = stub; в Docker обычно задаётся через `.env`) |
+| `pipeline.whisper_url` | URL whisper-rknn (пусто = stub; в Docker обычно через `.env`) |
+| `pipeline.enable_thinking` | thinking mode по умолчанию (`false`) |
+| `pipeline.verbose` | логи пайплайна (в Docker переопределяется `VLM_VERBOSE`) |
 
 ---
 
@@ -275,14 +319,17 @@ MODELS_DIR=./models ./scripts/download_models.sh 0.8b
 
 ## Сборка из исходников
 
+На хосте (RK3588 / arm64):
+
 ```bash
+sudo apt-get install -y build-essential cmake libopencv-dev
 mkdir -p build && cd build
 cmake ..
 make -j$(nproc)
 ctest --output-on-failure
 ```
 
-Или unit-тесты в Docker (как в CI, без NPU/моделей):
+Или unit-тесты в Docker (как в CI, без NPU/моделей; OpenCV собирается в builder-образе):
 
 ```bash
 docker compose -f docker-compose.dev.yml build
@@ -299,14 +346,15 @@ LD_LIBRARY_PATH=./third_party/lib:./third_party/ffmpeg-rockchip/lib \
 ### Структура проекта
 
 ```
-include/              публичные заголовки
+include/
+  core/vision_prompts.hpp   тексты промптов (ru/eng, simple/detailed)
 src/                  реализация C++
 third_party/
   lib/                librkllmrt.so, librknnrt.so
   ffmpeg-rockchip/    vendored ffmpeg + Rockchip libs
   rkllm/              C API headers
 scripts/              download_models.sh, docker-entrypoint.sh
-web_client/           Flask UI
+web_client/           Flask UI (описание, транскрипт, метрики)
 models/               веса (volume mount)
 .env.example          шаблон переменных окружения для Docker
 ```
@@ -317,13 +365,27 @@ models/               веса (volume mount)
 
 | Workflow | Триггер | Результат |
 |----------|---------|-----------|
-| **Deploy** | push `main` / `dev` | `docker-compose.dev.yml` → build + `ctest` (`ubuntu-24.04-arm`) |
-| **Deploy → prerelease** | push `dev` с `[prerelease]` или manual `publish_prerelease` | `ghcr.io/shiwarai/video-descriptor-rkllm:prerelease` (+ web) |
-| **Publish** | успешный Deploy на `main` | `:main` и `:${sha}` |
+| **Deploy** | push `main` / `dev`, или manual | `ctest` в Docker (`ubuntu-24.04-arm`, timeout 90 мин) |
+| **Deploy → prerelease** | push `dev` с `[prerelease]` или manual `publish_prerelease` | `:prerelease` + `:${sha}` в GHCR (API + web) |
+| **Deploy → notify-telegram** | после test / prerelease | уведомление в Telegram (см. ниже) |
+| **Publish** | успешный Deploy на `main` | `:main` и `:${sha}` (отдельный workflow) |
 
-Образы: **linux/arm64 only**.
+Образы: **linux/arm64 only** (~224 MB API, ~224 MB web). Runtime API: минимальный OpenCV (core+imgproc) без Mesa/LLVM из apt.
 
-Telegram (опционально): secrets `TELEGRAM_TOKEN`, `TELEGRAM_TO` — уведомления после Deploy (тесты / prerelease / ошибки).
+### Telegram
+
+Secrets в репозитории: `TELEGRAM_TOKEN`, `TELEGRAM_TO` (как в [whisper-rknn](https://github.com/ShiWarai/whisper-rknn)).
+
+После каждого Deploy job `notify-telegram` шлёт **одно** сообщение:
+
+| Ситуация | Текст |
+|----------|-------|
+| Тесты упали | «Тесты не прошли» |
+| Тесты ок, prerelease упал | «Тесты прошли, prerelease не удался» |
+| Тесты + prerelease ок | «Тесты и prerelease успешны» + теги образов |
+| Только тесты (без `[prerelease]`) | «Тесты прошли успешно» |
+
+Успешные уведомления — без звука. Если secrets не заданы, шаг пропускается (`continue-on-error`).
 
 ```bash
 # Prerelease из dev
@@ -332,8 +394,11 @@ git push origin dev
 ```
 
 GHCR:
-- `ghcr.io/shiwarai/video-descriptor-rkllm:main`
-- `ghcr.io/shiwarai/video-descriptor-rkllm-web:main`
+
+| Тег | API | Web |
+|-----|-----|-----|
+| `:main` | `ghcr.io/shiwarai/video-descriptor-rkllm:main` | `ghcr.io/shiwarai/video-descriptor-rkllm-web:main` |
+| `:prerelease` | `ghcr.io/shiwarai/video-descriptor-rkllm:prerelease` | `ghcr.io/shiwarai/video-descriptor-rkllm-web:prerelease` |
 
 ---
 
