@@ -46,7 +46,7 @@ jobs:
           docker run --rm \
             --workdir /app \
             video-descriptor-rkllm-builder \
-            sh -c 'cmake --build build -j"$(nproc)" && ctest --test-dir /app/build --output-on-failure'
+            sh -c 'cmake -B build -DCMAKE_BUILD_TYPE=Release && cmake --build build -j"$(nproc)" && ctest --test-dir /app/build --output-on-failure'
 
   publish-prerelease:
     name: Publish prerelease images to GHCR

@@ -56,10 +56,13 @@ target_link_libraries(vlm_core PUBLIC
 set(VLM_RUNTIME_RPATH "${THIRD_PARTY_LIB};${FFMPEG_LIB_DIR}")
 
 function(vlm_set_runtime_rpath target)
+    # DT_RPATH (not DT_RUNPATH) so vendored libav transitive deps (e.g. libswresample)
+    # resolve when the loader opens libavcodec.so from our ffmpeg-rockchip directory.
     set_target_properties(${target} PROPERTIES
         BUILD_RPATH "${VLM_RUNTIME_RPATH}"
         INSTALL_RPATH "${VLM_RUNTIME_RPATH}"
     )
+    target_link_options(${target} PRIVATE "LINKER:--disable-new-dtags")
 endfunction()
 
 add_executable(vlm_cli src/app/cli_main.cpp)

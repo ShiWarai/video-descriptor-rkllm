@@ -27,6 +27,11 @@ void expect(bool cond, const char* msg)
     return std::filesystem::path(TEST_FIXTURES_DIR) / name;
 }
 
+[[nodiscard]] bool mppDecodeAvailable()
+{
+    return std::filesystem::exists("/dev/mpp_service");
+}
+
 void test_probe_mp4()
 {
     const auto path = fixturePath("test.mp4");
@@ -55,6 +60,10 @@ void test_extract_mp4()
     const auto path = fixturePath("test.mp4");
     if (!std::filesystem::exists(path)) {
         std::cout << "skip extract mp4: fixture missing\n";
+        return;
+    }
+    if (!mppDecodeAvailable()) {
+        std::cout << "skip extract mp4: no MPP device (CI / non-RK host)\n";
         return;
     }
 
@@ -98,6 +107,10 @@ void test_extract_frame_at_time()
     const auto path = fixturePath("test.mp4");
     if (!std::filesystem::exists(path)) {
         std::cout << "skip single frame: fixture missing\n";
+        return;
+    }
+    if (!mppDecodeAvailable()) {
+        std::cout << "skip single frame: no MPP device (CI / non-RK host)\n";
         return;
     }
 
