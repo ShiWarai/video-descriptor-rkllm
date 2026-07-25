@@ -36,7 +36,6 @@ using Clock = std::chrono::steady_clock;
 VideoContextPipeline::VideoContextPipeline(ModelRegistry registry, PipelineConfig config)
     : registry_(std::move(registry)),
       config_(std::move(config)),
-      extractor_(config_.ffmpeg_bin_path),
       transcriber_(makeAudioTranscriber(config_))
 {
 }

@@ -27,14 +27,14 @@ public:
     /** Default Qwen3.5-VL vision input size (letterboxed RGB). */
     static constexpr int kDefaultVisionSize = 448;
 
-    explicit FrameExtractor(std::string ffmpeg_bin_path = "third_party/ffmpeg-rockchip/bin");
+    FrameExtractor() = default;
 
     [[nodiscard]] bool probe(std::string_view filename, VideoInfo& info) const;
 
     /**
      * Decode one frame at time_sec into model-ready RGB (letterboxed to target_w x target_h).
-     * Video: rkmpp decode + scale_rkrga resize/convert, software pad for letterbox.
-     * GIF: software decode/scale/pad (rkmpp cannot read animated GIF).
+     * Video: libav + h264_rkmpp decode, scale_rkrga resize/convert, software pad for letterbox.
+     * GIF: software libav decode/scale/pad (rkmpp cannot read animated GIF).
      */
     [[nodiscard]] bool extractFrameAtTime(std::string_view filename, double time_sec,
                                           int target_w, int target_h, RgbFrame& out_rgb) const;
@@ -50,12 +50,6 @@ public:
         std::string_view filename, int requested_frames, FrameReadyCallback on_frame,
         int target_w = kDefaultVisionSize, int target_h = kDefaultVisionSize,
         FrameProgressCallback progress = nullptr, VideoInfo* out_info = nullptr) const;
-
-private:
-    std::string ffmpeg_bin_path_;
-
-    [[nodiscard]] std::string ffmpegPath(std::string_view name) const;
-    [[nodiscard]] static std::string runCommand(const std::string& cmd);
 };
 
 }  // namespace vlm

@@ -11,6 +11,11 @@ RUN apt-get update && \
         ca-certificates \
         cmake \
         g++ \
+        libdrm-dev \
+        libmp3lame-dev \
+        libopus-dev \
+        libssl-dev \
+        libvorbis-dev \
         zlib1g-dev \
       && break; \
       echo "apt install failed (attempt ${attempt}), retrying..."; \
@@ -69,8 +74,10 @@ COPY --from=builder /app/third_party/ffmpeg-rockchip/lib /app/third_party/ffmpeg
 COPY config.json /app/config.json
 COPY scripts/docker-entrypoint.sh /app/scripts/docker-entrypoint.sh
 COPY scripts/download_models.sh /app/scripts/download_models.sh
+COPY scripts/fix_freq_rk3588.sh /app/scripts/fix_freq_rk3588.sh
 
 RUN chmod +x /app/scripts/docker-entrypoint.sh /app/scripts/download_models.sh \
+    /app/scripts/fix_freq_rk3588.sh \
     && mkdir -p /app/models \
     && cd /app/third_party/ffmpeg-rockchip/lib \
     && if [ -f librockchip_mpp.so.1 ]; then \
