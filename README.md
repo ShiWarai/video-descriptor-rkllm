@@ -323,6 +323,8 @@ models/               веса (volume mount)
 
 Образы: **linux/arm64 only**.
 
+Telegram (опционально): secrets `TELEGRAM_TOKEN`, `TELEGRAM_TO` — уведомления после Deploy (тесты / prerelease / ошибки).
+
 ```bash
 # Prerelease из dev
 git commit -m "feat: ... [prerelease]"

@@ -90,3 +90,71 @@ jobs:
           provenance: false
           cache-from: type=gha,scope=web-prerelease
           cache-to: type=gha,mode=max,scope=web-prerelease
+
+  # Одно уведомление после всех релевантных job'ов (ждёт prerelease, если он запускался).
+  notify-telegram:
+    name: Notify Telegram
+    needs: [test, publish-prerelease]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Tests failed
+        if: needs.test.result != 'success'
+        uses: appleboy/telegram-action@v1.0.1
+        continue-on-error: true
+        with:
+          to: ${{ secrets.TELEGRAM_TO }}
+          token: ${{ secrets.TELEGRAM_TOKEN }}
+          format: markdown
+          message: |
+            *Тесты не прошли*
+            Репозиторий: `${{ github.repository }}`
+            Ветка: `${{ github.ref_name }}`
+            [Открыть run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
+
+      - name: Tests OK, prerelease failed
+        if: needs.test.result == 'success' && needs.publish-prerelease.result == 'failure'
+        uses: appleboy/telegram-action@v1.0.1
+        continue-on-error: true
+        with:
+          to: ${{ secrets.TELEGRAM_TO }}
+          token: ${{ secrets.TELEGRAM_TOKEN }}
+          format: markdown
+          message: |
+            *Тесты прошли, prerelease не удался*
+            Репозиторий: `${{ github.repository }}`
+            Ветка: `${{ github.ref_name }}`
+            [Открыть run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
+
+      - name: Tests OK, prerelease published
+        if: needs.test.result == 'success' && needs.publish-prerelease.result == 'success'
+        uses: appleboy/telegram-action@v1.0.1
+        continue-on-error: true
+        with:
+          to: ${{ secrets.TELEGRAM_TO }}
+          token: ${{ secrets.TELEGRAM_TOKEN }}
+          format: markdown
+          disable_notification: true
+          message: |
+            *Тесты и prerelease успешны*
+            Репозиторий: `${{ github.repository }}`
+            Ветка: `${{ github.ref_name }}`
+            Тег: `:prerelease` и `:${{ github.sha }}`
+            API: `ghcr.io/${{ github.repository_owner }}/video-descriptor-rkllm:prerelease`
+            Web: `ghcr.io/${{ github.repository_owner }}/video-descriptor-rkllm-web:prerelease`
+            [Открыть run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
+
+      - name: Tests OK (no prerelease)
+        if: needs.test.result == 'success' && needs.publish-prerelease.result == 'skipped'
+        uses: appleboy/telegram-action@v1.0.1
+        continue-on-error: true
+        with:
+          to: ${{ secrets.TELEGRAM_TO }}
+          token: ${{ secrets.TELEGRAM_TOKEN }}
+          format: markdown
+          disable_notification: true
+          message: |
+            *Тесты прошли успешно*
+            Репозиторий: `${{ github.repository }}`
+            Ветка: `${{ github.ref_name }}`
+            [Открыть run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
