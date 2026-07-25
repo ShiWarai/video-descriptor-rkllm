@@ -1,3 +1,4 @@
+#include <cstdlib>
 #include <iostream>
 #include <string>
 
@@ -27,6 +28,11 @@ void logStartup(const vlm::ServerConfig& cfg, const vlm::VideoContextPipeline& p
     }
     if (cfg.pipeline.verbose) {
         std::cerr << "verbose: on\n";
+    }
+    if (!cfg.pipeline.whisper_url.empty()) {
+        std::cerr << "whisper: " << cfg.pipeline.whisper_url << '\n';
+    } else {
+        std::cerr << "whisper: disabled\n";
     }
 }
 
@@ -58,18 +64,27 @@ int main(int argc, char** argv)
     if (verbose_cli) {
         cfg.pipeline.verbose = true;
     }
+    if (const char* whisper_url = std::getenv("WHISPER_RKNN_URL")) {
+        if (whisper_url[0] != '\0') {
+            cfg.pipeline.whisper_url = whisper_url;
+        }
+    }
+    if (const char* verbose_env = std::getenv("VLM_VERBOSE")) {
+        if (verbose_env[0] == '1' || verbose_env[0] == 't' || verbose_env[0] == 'T' ||
+            verbose_env[0] == 'y' || verbose_env[0] == 'Y') {
+            cfg.pipeline.verbose = true;
+        }
+    }
+    if (cfg.pipeline.workdir.empty()) {
+        cfg.pipeline.workdir = cfg.workdir;
+    }
 
     auto pipeline =
         std::make_shared<vlm::VideoContextPipeline>(std::move(cfg.registry), cfg.pipeline);
-    if (!pipeline->initialize(cfg.preload_model_id)) {
-        std::cerr << "Failed to initialize pipeline\n";
-        return 1;
-    }
-
-    logStartup(cfg, *pipeline);
 
     auto state = std::make_shared<vlm::ServiceState>();
-    state->setLoadedModelId(pipeline->loadedModelId());
+
+    logStartup(cfg, *pipeline);
 
     vlm::HttpServer server(std::move(cfg), pipeline, state);
     server.run();

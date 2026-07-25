@@ -48,10 +48,12 @@ public:
     void setThinkingSamplingDefaults(float temperature, float top_p,
                                      float presence_penalty) noexcept;
 
-    /** User multimodal prompt. prompt_mode: "simple" | "detailed". */
-    [[nodiscard]] static std::string buildUserVisionPrompt(std::string_view lang,
-                                                           bool enable_thinking,
-                                                           std::string_view prompt_mode = "detailed");
+    /** User multimodal prompt. prompt_mode: "simple" | "detailed".
+     *  Texts live in core/vision_prompts.hpp; optional ASR goes with frames, before the task.
+     *  Thinking is toggled via RKLLMInput.enable_thinking, not prompt suffixes. */
+    [[nodiscard]] static std::string buildUserVisionPrompt(
+        std::string_view lang, std::string_view prompt_mode = "detailed",
+        std::string_view transcript = {});
 
 private:
     LLMHandle handle_ = nullptr;

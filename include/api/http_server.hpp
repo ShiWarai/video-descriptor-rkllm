@@ -17,6 +17,7 @@ public:
     void run();
 
 private:
+    void runStartup();
     [[nodiscard]] AnalyzeResult runInference(AnalyzeRequest request);
 
     ServerConfig config_;

@@ -1,6 +1,7 @@
 #include <iostream>
 
 #include "core/frame_extractor.hpp"
+#include "core/media_util.hpp"
 
 namespace {
 
@@ -25,11 +26,19 @@ void test_plan_frame_count()
     expect(vlm::planFrameCount(1.0, 0.0, 8) == 0, "zero fps");
 }
 
+void test_is_gif_path()
+{
+    expect(vlm::isGifPath("clip.gif"), "lowercase gif");
+    expect(vlm::isGifPath("CLIP.GIF"), "uppercase gif");
+    expect(!vlm::isGifPath("video.mp4"), "mp4 is not gif");
+}
+
 }  // namespace
 
 int main()
 {
     test_plan_frame_count();
+    test_is_gif_path();
     std::cout << "test_frame_plan: ok\n";
     return 0;
 }

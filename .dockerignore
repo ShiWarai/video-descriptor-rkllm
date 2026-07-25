@@ -5,9 +5,7 @@ build/
 **/__pycache__/
 **/*.pyc
 web_client/.venv/
-models/*.rknn
-models/*.rkllm
-models/*.part
+models/
 *.log
 *.mp4
 *.mkv

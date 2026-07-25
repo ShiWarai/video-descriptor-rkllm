@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
     inputs:
       publish_prerelease:
-        description: "Собрать и опубликовать prerelease-образы в GHCR (тег :prerelease)"
+        description: "Собрать и опубликовать предварительный образ в GHCR (тег :prerelease)"
         required: false
         default: false
         type: boolean
@@ -14,25 +14,39 @@ on:
 permissions:
   contents: read
   packages: write
+  actions: write
 
 jobs:
   test:
     name: Run tests in Docker
     runs-on: ubuntu-24.04-arm
-    timeout-minutes: 45
+    timeout-minutes: 90
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
-        with:
-          driver: docker
 
-      - name: Build and run unit tests
+      - name: Build test image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          target: builder
+          tags: video-descriptor-rkllm-builder
+          load: true
+          push: false
+          provenance: false
+          cache-from: type=gha,scope=builder
+          cache-to: type=gha,mode=max,scope=builder
+
+      - name: Run unit tests
         run: |
-          docker compose -f docker-compose.dev.yml build
-          docker compose -f docker-compose.dev.yml run --rm test
+          docker run --rm \
+            --workdir /app \
+            video-descriptor-rkllm-builder \
+            sh -c 'cmake --build build -j"$(nproc)" && ctest --test-dir /app/build --output-on-failure'
 
   publish-prerelease:
     name: Publish prerelease images to GHCR
@@ -49,6 +63,9 @@ jobs:
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
 
       - name: Login to GHCR
         uses: docker/login-action@v3
@@ -74,15 +91,87 @@ jobs:
             ${{ env.IMAGE_API }}:${{ github.sha }}
           push: true
           provenance: false
+          cache-from: type=gha,scope=api-prerelease
+          cache-to: type=gha,mode=max,scope=api-prerelease
 
       - name: Build and push web (prerelease)
         uses: docker/build-push-action@v6
         with:
           context: .
           file: ./Dockerfile.web
-          platforms: linux/arm64
+          platforms: linux/amd64,linux/arm64
           tags: |
             ${{ env.IMAGE_WEB }}:prerelease
             ${{ env.IMAGE_WEB }}:${{ github.sha }}
           push: true
           provenance: false
+          cache-from: type=gha,scope=web-prerelease
+          cache-to: type=gha,mode=max,scope=web-prerelease
+
+  # Одно уведомление после всех релевантных job'ов (ждёт prerelease, если он запускался).
+  notify-telegram:
+    name: Notify Telegram
+    needs: [test, publish-prerelease]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Tests failed
+        if: needs.test.result != 'success'
+        uses: appleboy/telegram-action@v1.0.1
+        continue-on-error: true
+        with:
+          to: ${{ secrets.TELEGRAM_TO }}
+          token: ${{ secrets.TELEGRAM_TOKEN }}
+          format: markdown
+          message: |
+            *Тесты не прошли*
+            Репозиторий: `${{ github.repository }}`
+            Ветка: `${{ github.ref_name }}`
+            [Открыть run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
+
+      - name: Tests OK, prerelease failed
+        if: needs.test.result == 'success' && needs.publish-prerelease.result == 'failure'
+        uses: appleboy/telegram-action@v1.0.1
+        continue-on-error: true
+        with:
+          to: ${{ secrets.TELEGRAM_TO }}
+          token: ${{ secrets.TELEGRAM_TOKEN }}
+          format: markdown
+          message: |
+            *Тесты прошли, prerelease не удался*
+            Репозиторий: `${{ github.repository }}`
+            Ветка: `${{ github.ref_name }}`
+            [Открыть run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
+
+      - name: Tests OK, prerelease published
+        if: needs.test.result == 'success' && needs.publish-prerelease.result == 'success'
+        uses: appleboy/telegram-action@v1.0.1
+        continue-on-error: true
+        with:
+          to: ${{ secrets.TELEGRAM_TO }}
+          token: ${{ secrets.TELEGRAM_TOKEN }}
+          format: markdown
+          disable_notification: true
+          message: |
+            *Тесты и prerelease успешны*
+            Репозиторий: `${{ github.repository }}`
+            Ветка: `${{ github.ref_name }}`
+            Тег: `:prerelease` и `:${{ github.sha }}`
+            API: `ghcr.io/${{ github.repository_owner }}/video-descriptor-rkllm:prerelease`
+            Web: `ghcr.io/${{ github.repository_owner }}/video-descriptor-rkllm-web:prerelease`
+            [Открыть run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
+
+      - name: Tests OK (no prerelease)
+        if: needs.test.result == 'success' && needs.publish-prerelease.result == 'skipped'
+        uses: appleboy/telegram-action@v1.0.1
+        continue-on-error: true
+        with:
+          to: ${{ secrets.TELEGRAM_TO }}
+          token: ${{ secrets.TELEGRAM_TOKEN }}
+          format: markdown
+          disable_notification: true
+          message: |
+            *Тесты прошли успешно*
+            Репозиторий: `${{ github.repository }}`
+            Ветка: `${{ github.ref_name }}`
+            [Открыть run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})

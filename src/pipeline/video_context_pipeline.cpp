@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <atomic>
+#include <cctype>
 #include <chrono>
 #include <condition_variable>
 #include <deque>
@@ -10,6 +11,7 @@
 #include <mutex>
 
 #include "core/frame_extractor.hpp"
+#include "core/media_util.hpp"
 #include "core/llm_runtime.hpp"
 #include "core/text_util.hpp"
 #include "core/vision_encoder.hpp"
@@ -31,7 +33,7 @@ VideoContextPipeline::VideoContextPipeline(ModelRegistry registry, PipelineConfi
     : registry_(std::move(registry)),
       config_(std::move(config)),
       extractor_(config_.ffmpeg_bin_path),
-      transcriber_(std::make_unique<StubAudioTranscriber>())
+      transcriber_(makeAudioTranscriber(config_))
 {
 }
 
@@ -201,15 +203,26 @@ AnalyzeResult VideoContextPipeline::analyze(const AnalyzeRequest& request)
     } prep;
 
     if (config_.verbose) {
-        std::cerr << "parallel prep: model load + frame extract + transcript\n";
+        if (isGifPath(request.video_path.string())) {
+            std::cerr << "parallel prep: model load + frame extract (ASR skipped: GIF)\n";
+        } else {
+            std::cerr << "parallel prep: model load + frame extract + transcript\n";
+        }
     }
 
-    auto transcript_fut = std::async(std::launch::async, [&] {
-        const auto t0 = Clock::now();
-        prep.transcript =
-            transcriber_->transcribe(request.video_path, request.transcript_override);
-        prep.transcript_ms = elapsedMs(t0);
-    });
+    const bool skip_asr = isGifPath(request.video_path.string());
+    std::future<void> transcript_fut;
+    if (skip_asr) {
+        prep.transcript = TranscriptResult{.text = "", .status = "skipped"};
+        prep.transcript_ms = 0;
+    } else {
+        transcript_fut = std::async(std::launch::async, [&] {
+            const auto t0 = Clock::now();
+            prep.transcript =
+                transcriber_->transcribe(request.video_path, request.transcript_override);
+            prep.transcript_ms = elapsedMs(t0);
+        });
+    }
 
     auto model_fut = std::async(std::launch::async, [&] {
         const auto t0 = Clock::now();
@@ -306,17 +319,21 @@ AnalyzeResult VideoContextPipeline::analyze(const AnalyzeRequest& request)
 
     const int extracted = extract_fut.get();
     const bool model_ok = model_fut.get();
-    transcript_fut.get();
 
     result.metrics["model_load_ms"] = prep.model_load_ms;
     result.metrics["frame_extract_ms"] = prep.extract_ms;
-    result.metrics["transcript_ms"] = prep.transcript_ms;
     result.metrics["vision_encode_ms"] = elapsedMs(t_encode);
-    result.transcript = std::move(prep.transcript);
     result.model = loaded_model_id_;
     result.duration_sec = prep.video_info.duration_sec;
 
     if (!model_ok) {
+        if (transcript_fut.valid()) {
+            transcript_fut.get();
+        }
+        result.metrics["transcript_ms"] = prep.transcript_ms;
+        result.metrics["audio_extract_ms"] = prep.transcript.audio_extract_ms;
+        result.metrics["whisper_ms"] = prep.transcript.whisper_ms;
+        result.transcript = std::move(prep.transcript);
         result.error = "Failed to load model: " + model_id;
         return finish();
     }
@@ -342,14 +359,36 @@ AnalyzeResult VideoContextPipeline::analyze(const AnalyzeRequest& request)
     }
 
     if (encoded == 0) {
+        if (transcript_fut.valid()) {
+            transcript_fut.get();
+        }
+        result.metrics["transcript_ms"] = prep.transcript_ms;
+        result.metrics["audio_extract_ms"] = prep.transcript.audio_extract_ms;
+        result.metrics["whisper_ms"] = prep.transcript.whisper_ms;
+        result.transcript = std::move(prep.transcript);
         result.error =
             extracted == 0 ? "No frames extracted from video" : "Vision encoding failed";
         return finish();
     }
 
     result.frames_used = encoded;
-    const std::string prompt =
-        LlmRuntime::buildUserVisionPrompt(request.lang, thinking, request.prompt_mode);
+
+    // Vision encode already ran in parallel with ASR; join transcript before LLM so speech
+    // can be included in the prompt (skipped for GIF).
+    if (transcript_fut.valid()) {
+        transcript_fut.get();
+    }
+    result.metrics["transcript_ms"] = prep.transcript_ms;
+    result.metrics["audio_extract_ms"] = prep.transcript.audio_extract_ms;
+    result.metrics["whisper_ms"] = prep.transcript.whisper_ms;
+    result.transcript = std::move(prep.transcript);
+
+    const std::string_view transcript_for_prompt =
+        (result.transcript.status == "ok" || result.transcript.status == "provided")
+            ? std::string_view(result.transcript.text)
+            : std::string_view{};
+    const std::string prompt = LlmRuntime::buildUserVisionPrompt(
+        request.lang, request.prompt_mode, transcript_for_prompt);
     const float temperature = request.temperature.value_or(-1.0f);
     {
         const auto t0 = Clock::now();

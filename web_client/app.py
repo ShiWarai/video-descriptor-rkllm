@@ -73,7 +73,7 @@ def analyze():
         return render_template(
             "result.html",
             ok=False,
-            error="Выберите видеофайл",
+            error="Выберите видео или GIF",
             api_base=API_BASE,
         )
 
@@ -93,7 +93,6 @@ def analyze():
     temperature = request.form.get("temperature", "")
     lang = request.form.get("lang", "ru")
     prompt_mode = request.form.get("prompt_mode", "detailed")
-    transcript = request.form.get("transcript", "")
     model = request.form.get("model", "")
 
     data = {
@@ -110,8 +109,6 @@ def analyze():
         data["enable_thinking"] = enable_thinking.strip()
     if temperature.strip():
         data["temperature"] = temperature.strip()
-    if transcript.strip():
-        data["transcript"] = transcript.strip()
 
     try:
         video.stream.seek(0, os.SEEK_END)
@@ -124,7 +121,7 @@ def analyze():
 
         resp = requests.post(
             f"{API_BASE}/v1/video/analyze",
-            files={"file": (video.filename, video.stream, video.mimetype or "video/mp4")},
+            files={"file": (video.filename, video.stream, video.mimetype or "application/octet-stream")},
             data=data,
             timeout=3600,
         )

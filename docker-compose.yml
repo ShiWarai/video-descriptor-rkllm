@@ -20,12 +20,14 @@ services:
     environment:
       VLM_DOWNLOAD_MODELS: "${VLM_DOWNLOAD_MODELS:-0}"
       VLM_MODEL_URLS: "${VLM_MODEL_URLS:-}"
+      WHISPER_RKNN_URL: "${WHISPER_RKNN_URL:-}"
+      VLM_VERBOSE: "${VLM_VERBOSE:-1}"
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
-      interval: 30s
+      test: ["CMD", "curl", "-sf", "http://localhost:8080/ready"]
+      interval: 15s
       timeout: 10s
-      retries: 3
+      retries: 40
       start_period: 60s
 
   web:

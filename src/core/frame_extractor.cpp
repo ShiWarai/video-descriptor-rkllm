@@ -1,4 +1,5 @@
 #include "core/frame_extractor.hpp"
+#include "core/media_util.hpp"
 
 #include <algorithm>
 #include <array>
@@ -95,15 +96,26 @@ bool FrameExtractor::extractFrameAtTime(std::string_view filename, double time_s
                                         int height, cv::Mat& out_bgr) const
 {
     const std::string path(filename);
-    const std::string cmd =
-        ffmpegPath("ffmpeg") + " -hide_banner -loglevel error "
-        "-ss " + std::to_string(time_sec) + " "
-        "-hwaccel rkmpp -hwaccel_output_format drm_prime "
-        "-i \"" + path + "\" "
-        "-an -sn -frames:v 1 "
-        "-vf scale_rkrga=w=" + std::to_string(width) + ":h=" + std::to_string(height) +
-        ":format=bgr24:force_original_aspect_ratio=disable,hwdownload,format=bgr24 "
-        "-f rawvideo -pix_fmt bgr24 pipe:1 2>/dev/null";
+    std::string cmd;
+    if (isGifPath(filename)) {
+        // GIF is decoded in software — rkmpp/rkrga cannot read animated GIF.
+        cmd = ffmpegPath("ffmpeg") + " -hide_banner -loglevel error "
+              "-ss " + std::to_string(time_sec) + " "
+              "-i \"" + path + "\" "
+              "-an -sn -frames:v 1 "
+              "-vf scale=" + std::to_string(width) + ":" + std::to_string(height) +
+              ":force_original_aspect_ratio=disable "
+              "-f rawvideo -pix_fmt bgr24 pipe:1 2>/dev/null";
+    } else {
+        cmd = ffmpegPath("ffmpeg") + " -hide_banner -loglevel error "
+              "-ss " + std::to_string(time_sec) + " "
+              "-hwaccel rkmpp -hwaccel_output_format drm_prime "
+              "-i \"" + path + "\" "
+              "-an -sn -frames:v 1 "
+              "-vf scale_rkrga=w=" + std::to_string(width) + ":h=" + std::to_string(height) +
+              ":format=bgr24:force_original_aspect_ratio=disable,hwdownload,format=bgr24 "
+              "-f rawvideo -pix_fmt bgr24 pipe:1 2>/dev/null";
+    }
 
     const std::unique_ptr<FILE, decltype(&pclose)> pipe(popen(cmd.c_str(), "r"), pclose);
     if (!pipe) {
