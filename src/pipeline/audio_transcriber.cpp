@@ -66,6 +66,25 @@ struct ParsedUrl {
 
 }  // namespace
 
+bool parseWhisperTranscribeResponse(std::string_view body, TranscriptResult& result)
+{
+    const auto j = nlohmann::json::parse(body);
+    result.text = j.value("text", "");
+    result.segments.clear();
+    if (j.contains("segments") && j["segments"].is_array()) {
+        for (const auto& seg : j["segments"]) {
+            TranscriptSegment segment;
+            segment.start = seg.value("start", 0.0);
+            segment.end = seg.value("end", 0.0);
+            segment.text = seg.value("text", "");
+            if (!segment.text.empty()) {
+                result.segments.push_back(std::move(segment));
+            }
+        }
+    }
+    return true;
+}
+
 TranscriptResult StubAudioTranscriber::transcribe(const std::filesystem::path& /*video_path*/,
                                                   const std::optional<std::string>& override_text)
 {
@@ -113,6 +132,7 @@ TranscriptResult HttpWhisperTranscriber::transcribe(
          .content = std::move(audio_payload),
          .filename = "audio.wav",
          .content_type = "audio/wav"});
+    items.push_back({.name = "timestamps", .content = "true", .filename = "", .content_type = ""});
 
     const auto t_whisper = Clock::now();
 
@@ -153,8 +173,10 @@ TranscriptResult HttpWhisperTranscriber::transcribe(
     }
 
     try {
-        const auto j = nlohmann::json::parse(response->body);
-        result.text = j.value("text", "");
+        if (!parseWhisperTranscribeResponse(response->body, result)) {
+            result.status = "error";
+            return result;
+        }
         result.status = "ok";
     } catch (const std::exception& e) {
         std::cerr << "whisper: invalid JSON response: " << e.what() << '\n';

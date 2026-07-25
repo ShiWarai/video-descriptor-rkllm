@@ -263,10 +263,12 @@ AnalyzeResult VideoContextPipeline::analyze(const AnalyzeRequest& request)
         // here — model load runs in parallel.
         const int got = extractor_.extractFramesStreaming(
             request.video_path.string(), effective,
-            [&](RgbFrame frame, int index, int /*total*/) {
+            [&](RgbFrame frame, int index, int /*total*/, double time_sec) {
                 std::lock_guard lock(prep.mu);
                 prep.pending_frames.push_back(
-                    PendingVisionFrame{.index = index, .frame = std::move(frame)});
+                    PendingVisionFrame{.index = index,
+                                       .time_sec = time_sec,
+                                       .frame = std::move(frame)});
                 ++prep.extract_count;
                 prep.cv.notify_all();
             },
@@ -336,17 +338,13 @@ AnalyzeResult VideoContextPipeline::analyze(const AnalyzeRequest& request)
     if (config_.verbose) {
         const VideoInfo& info = prep.video_info;
         const int planned = planFrameCount(info.duration_sec, info.fps, effective);
-        const double total_frames = info.duration_sec * info.fps;
-        const double step =
-            planned > 0 ? total_frames / static_cast<double>(planned) : 0.0;
+        const auto times = planFrameTimes(info.duration_sec, info.fps, effective);
         std::cerr << "frame sampling: duration=" << info.duration_sec << "s fps=" << info.fps
                   << " requested=" << effective << " planned=" << planned
                   << " got=" << extracted << " encoded=" << encoded << '\n';
-        if (planned > 0) {
+        if (!times.empty()) {
             std::cerr << "  times_sec:";
-            for (int i = 0; i < planned; ++i) {
-                const int frame_idx = static_cast<int>(i * step);
-                const double t = frame_idx / info.fps;
+            for (double t : times) {
                 std::cerr << ' ' << t;
             }
             std::cerr << '\n';
@@ -378,12 +376,20 @@ AnalyzeResult VideoContextPipeline::analyze(const AnalyzeRequest& request)
     result.metrics["whisper_ms"] = prep.transcript.whisper_ms;
     result.transcript = std::move(prep.transcript);
 
-    const std::string_view transcript_for_prompt =
-        (result.transcript.status == "ok" || result.transcript.status == "provided")
+    const bool has_timed_speech =
+        (result.transcript.status == "ok") && !result.transcript.segments.empty();
+    const std::string_view flat_transcript =
+        (!has_timed_speech &&
+         (result.transcript.status == "ok" || result.transcript.status == "provided"))
             ? std::string_view(result.transcript.text)
             : std::string_view{};
+    const std::vector<double>& frame_times = vision_.frameTimes();
+    static const std::vector<TranscriptSegment> kEmptySegments;
+    const std::vector<TranscriptSegment>& segments =
+        has_timed_speech ? result.transcript.segments : kEmptySegments;
     const std::string prompt = LlmRuntime::buildUserVisionPrompt(
-        request.lang, request.prompt_mode, transcript_for_prompt);
+        request.lang, request.prompt_mode, frame_times, segments, flat_transcript,
+        result.duration_sec);
     const float temperature = request.temperature.value_or(-1.0f);
     {
         const auto t0 = Clock::now();

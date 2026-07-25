@@ -4,6 +4,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <string_view>
 
 #include "types.hpp"
 
@@ -34,5 +35,8 @@ private:
 };
 
 [[nodiscard]] std::unique_ptr<AudioTranscriber> makeAudioTranscriber(const PipelineConfig& config);
+
+/** Parse whisper-rknn /transcribe JSON (text + optional segments). */
+[[nodiscard]] bool parseWhisperTranscribeResponse(std::string_view body, TranscriptResult& result);
 
 }  // namespace vlm

@@ -4,12 +4,20 @@
 #include <map>
 #include <optional>
 #include <string>
+#include <vector>
 
 namespace vlm {
+
+struct TranscriptSegment {
+    double start = 0;
+    double end = 0;
+    std::string text;
+};
 
 struct TranscriptResult {
     std::string text;
     std::string status;  // "provided" | "stub" | "ok" | "error" | "skipped" (gif / no audio)
+    std::vector<TranscriptSegment> segments;  // empty if whisper timestamps unavailable
     std::optional<std::string> language;
     double audio_extract_ms = 0;
     double whisper_ms = 0;

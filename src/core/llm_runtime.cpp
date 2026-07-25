@@ -93,9 +93,13 @@ bool LlmRuntime::setOutputLang(std::string_view lang)
 }
 
 std::string LlmRuntime::buildUserVisionPrompt(std::string_view lang, std::string_view prompt_mode,
-                                              std::string_view transcript)
+                                              const std::vector<double>& frame_times,
+                                              const std::vector<TranscriptSegment>& segments,
+                                              std::string_view flat_transcript_fallback,
+                                              double duration_sec)
 {
-    return prompts::buildUserVisionPrompt(normalizeLang(lang), prompt_mode, transcript);
+    return prompts::buildUserVisionPrompt(normalizeLang(lang), prompt_mode, frame_times, segments,
+                                          flat_transcript_fallback, duration_sec);
 }
 
 bool LlmRuntime::load(const std::string& llm_model_path, int32_t max_new_tokens,
@@ -193,28 +197,6 @@ int LlmRuntime::instanceCallback(RKLLMResult* result, LLMCallState state)
     return 0;
 }
 
-std::string LlmRuntime::expandImageTags(const std::string& prompt, std::size_t image_count)
-{
-    if (image_count <= 1 || prompt.find("<image>") == std::string::npos) {
-        return prompt;
-    }
-    std::string out = prompt;
-    const auto pos = out.find("<image>");
-    if (pos == std::string::npos) {
-        return out;
-    }
-    std::string tags;
-    tags.reserve(image_count * 8);
-    for (std::size_t i = 0; i < image_count; ++i) {
-        if (i) {
-            tags += ' ';
-        }
-        tags += "<image>";
-    }
-    out.replace(pos, 7, tags);
-    return out;
-}
-
 std::string LlmRuntime::generateMultimodal(const std::string& prompt, const VisionEncoder& vision,
                                             int max_new_tokens, float temperature)
 {
@@ -230,7 +212,7 @@ std::string LlmRuntime::generateMultimodal(const std::string& prompt, const Visi
         stream_started_ = false;
     }
 
-    multimodal_prompt_ = expandImageTags(prompt, vision.frameCount());
+    multimodal_prompt_ = prompts::expandImageTags(prompt, vision.frameCount());
     const auto& info = vision.modelInfo();
 
     input_ = {};

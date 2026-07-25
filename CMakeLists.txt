@@ -15,6 +15,7 @@ set(VLM_CORE_SOURCES
     src/core/audio_extractor.cpp
     src/core/frame_extractor.cpp
     src/core/vision_encoder.cpp
+    src/core/vision_prompts.cpp
     src/core/llm_runtime.cpp
     src/core/subprocess.cpp
     src/core/text_util.cpp
@@ -138,6 +139,11 @@ add_executable(test_subprocess tests/test_subprocess.cpp)
 target_link_libraries(test_subprocess PRIVATE vlm_core)
 vlm_set_runtime_rpath(test_subprocess)
 add_test(NAME test_subprocess COMMAND test_subprocess)
+
+add_executable(test_asr_segments tests/test_asr_segments.cpp)
+target_link_libraries(test_asr_segments PRIVATE vlm_core)
+vlm_set_runtime_rpath(test_asr_segments)
+add_test(NAME test_asr_segments COMMAND test_asr_segments)
 
 add_executable(test_api_auth tests/test_api_auth.cpp)
 target_link_libraries(test_api_auth PRIVATE vlm_core)

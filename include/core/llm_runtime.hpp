@@ -4,9 +4,12 @@
 #include <mutex>
 #include <string>
 #include <string_view>
+#include <vector>
 
 #include <rkllm/rkllm.h>
+
 #include "core/vision_encoder.hpp"
+#include "types.hpp"
 
 namespace vlm {
 
@@ -53,7 +56,9 @@ public:
      *  Thinking is toggled via RKLLMInput.enable_thinking, not prompt suffixes. */
     [[nodiscard]] static std::string buildUserVisionPrompt(
         std::string_view lang, std::string_view prompt_mode = "detailed",
-        std::string_view transcript = {});
+        const std::vector<double>& frame_times = {},
+        const std::vector<TranscriptSegment>& segments = {},
+        std::string_view flat_transcript_fallback = {}, double duration_sec = 0.0);
 
 private:
     LLMHandle handle_ = nullptr;
@@ -88,8 +93,6 @@ private:
     static int staticCallback(RKLLMResult* result, void* userdata, LLMCallState state);
     int instanceCallback(RKLLMResult* result, LLMCallState state);
     [[nodiscard]] static std::string normalizeLang(std::string_view lang);
-    [[nodiscard]] static std::string expandImageTags(const std::string& prompt,
-                                                     std::size_t image_count);
 };
 
 }  // namespace vlm

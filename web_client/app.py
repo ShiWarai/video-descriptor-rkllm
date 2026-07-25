@@ -96,7 +96,7 @@ def analyze():
             api_base=API_BASE,
         )
 
-    frames = request.form.get("frames", "8")
+    frames = request.form.get("frames", "16")
     frame_budget = request.form.get("frame_budget", "")
     max_tokens = request.form.get("max_tokens", "")
     enable_thinking = request.form.get("enable_thinking", "")

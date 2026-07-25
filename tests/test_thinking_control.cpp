@@ -52,7 +52,7 @@ void test_prompt_detailed_ru()
 
 void test_prompt_with_transcript()
 {
-    const std::string ru = buildUserVisionPrompt("ru", "detailed", "привет");
+    const std::string ru = buildUserVisionPrompt("ru", "detailed", {}, {}, "привет");
     expect(ru == expectedPrompt(kFramesIntroRu, kTaskDetailedRu, kSpeechPrefixRu, "привет"),
            "ru with transcript");
     const auto speech_pos = ru.find(kSpeechPrefixRu);
@@ -61,7 +61,7 @@ void test_prompt_with_transcript()
            "speech before describe task");
     expect(ru.find("/no_think") == std::string::npos, "no think switch in prompt");
 
-    const std::string eng = buildUserVisionPrompt("eng", "simple", "hello");
+    const std::string eng = buildUserVisionPrompt("eng", "simple", {}, {}, "hello");
     expect(eng == expectedPrompt(kFramesIntroEng, kTaskSimpleEng, kSpeechPrefixEng, "hello"),
            "eng with transcript");
     const auto eng_speech = eng.find(kSpeechPrefixEng);
@@ -94,8 +94,8 @@ void test_llm_runtime_delegates_to_prompts()
     expect(vlm::LlmRuntime::buildUserVisionPrompt("en", "simple") ==
                buildUserVisionPrompt("eng", "simple"),
            "LlmRuntime normalizes lang aliases");
-    expect(vlm::LlmRuntime::buildUserVisionPrompt("eng", "detailed", "hi") ==
-               buildUserVisionPrompt("eng", "detailed", "hi"),
+    expect(vlm::LlmRuntime::buildUserVisionPrompt("eng", "detailed", {}, {}, "hi") ==
+               buildUserVisionPrompt("eng", "detailed", {}, {}, "hi"),
            "LlmRuntime with transcript");
 }
 
