@@ -165,20 +165,31 @@ TranscriptResult HttpWhisperTranscriber::transcribe(
          .content_type = "audio/ogg"});
 
     const auto t_whisper = Clock::now();
+
+    auto post_transcribe = [&](auto& client) -> httplib::Result {
+        client.set_connection_timeout(30, 0);
+        client.set_read_timeout(300, 0);
+        client.set_write_timeout(30, 0);
+        return client.Post("/transcribe", items);
+    };
+
+    httplib::Result response;
 #ifdef CPPHTTPLIB_OPENSSL_SUPPORT
-    httplib::SSLClient client(parsed.host, parsed.port);
+    if (parsed.use_ssl) {
+        httplib::SSLClient client(parsed.host, parsed.port);
+        response = post_transcribe(client);
+    } else {
+        httplib::Client client(parsed.host, parsed.port);
+        response = post_transcribe(client);
+    }
 #else
     if (parsed.use_ssl) {
         std::cerr << "whisper: HTTPS not supported (build without OpenSSL)\n";
         return result;
     }
     httplib::Client client(parsed.host, parsed.port);
+    response = post_transcribe(client);
 #endif
-    client.set_connection_timeout(30, 0);
-    client.set_read_timeout(300, 0);
-    client.set_write_timeout(30, 0);
-
-    auto response = client.Post("/transcribe", items);
     result.whisper_ms = elapsedMs(t_whisper);
 
     if (!response) {

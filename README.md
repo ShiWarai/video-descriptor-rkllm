@@ -178,7 +178,7 @@ startupProbe:
 | Поле | По умолчанию | Описание |
 |------|--------------|----------|
 | `file` | — | Видео или GIF (обязательно) |
-| `model` | из `config.json` | `qwen3.5-0.8b-video` / `qwen3.5-2b-video` |
+| `model` | из `config.json` | `qwen3.5-0.8b-video` / `qwen3.5-2b-video` / `qwen3.5-4b-video` |
 | `frames` | 8 | Сколько кадров запросить |
 | `frame_budget` | из config | Потолок кадров с учётом контекста |
 | `max_tokens` | из config | Лимит генерации LLM |
@@ -274,7 +274,7 @@ docker compose up -d
 | Переменная | Описание |
 |------------|----------|
 | `WHISPER_RKNN_URL` | URL whisper-rknn. Пусто = stub ASR без транскрипции |
-| `VLM_DOWNLOAD_MODELS` | Автоподгрузка моделей VLM: `0`, `0.8b`, `2b`, `all` |
+| `VLM_DOWNLOAD_MODELS` | Автоподгрузка моделей VLM: `0`, `0.8b`, `2b`, `4b`, `all` |
 | `VLM_MODEL_URLS` | Свои URL весов: `имя_файла=https://...` |
 | `VLM_VERBOSE` | Подробные логи API (`1` / `0`) |
 
@@ -324,15 +324,17 @@ Transcribe: `POST {WHISPER_RKNN_URL}/transcribe` (multipart, поле `file`).
 |--------|---------------|-------------|--------------|
 | Qwen3.5-0.8B | `qwen3.5-0.8b_vision_rk3588.rknn` | `qwen3.5-0.8b_w8a8_rk3588.rkllm` | [HF](https://huggingface.co/Qengineering/Qwen3.5-0.8B-rk3588) |
 | Qwen3.5-2B | `qwen3.5-2b_vision_rk3588.rknn` | `qwen3.5-2b_w8a8_rk3588.rkllm` | [HF](https://huggingface.co/Qengineering/Qwen3.5-2B-rk3588) |
+| Qwen3.5-4B | `qwen3.5-4b_vision_rk3588.rknn` | `qwen3.5-4b_w8a8_rk3588.rkllm` | [HF](https://huggingface.co/Qengineering/Qwen3.5-4B-rk3588) |
 
-**Автоподгрузка (opt-in):** в `.env` задайте `VLM_DOWNLOAD_MODELS=0.8b` (или `2b`, `all`, `0.8b,2b`). Свои URL: `VLM_MODEL_URLS=имя_файла=https://...`
+**Автоподгрузка (opt-in):** в `.env` задайте `VLM_DOWNLOAD_MODELS=0.8b` (или `2b`, `4b`, `all`, `0.8b,2b,4b`). Свои URL: `VLM_MODEL_URLS=имя_файла=https://...`
 
 | `VLM_DOWNLOAD_MODELS` | Что качается |
 |-----------------------|--------------|
 | `0` / не задано | ничего |
 | `0.8b` | только 0.8B |
 | `2b` | только 2B |
-| `all` / `1` | обе |
+| `4b` | только 4B |
+| `all` / `1` | все три |
 
 ```bash
 # в .env: VLM_DOWNLOAD_MODELS=0.8b

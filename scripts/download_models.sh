@@ -2,8 +2,8 @@
 # Download RK3588 model weights into MODELS_DIR.
 #
 # Presets (VLM_DOWNLOAD_MODELS or first argument):
-#   0.8b | 2b | all | 1  — built-in Qengineering HF repos
-#   comma-separated: 0.8b,2b
+#   0.8b | 2b | 4b | all | 1  — built-in Qengineering HF repos
+#   comma-separated: 0.8b,2b,4b
 #
 # Custom URLs (VLM_MODEL_URLS), comma- or newline-separated:
 #   local_filename=https://host/path/file.rknn
@@ -36,8 +36,14 @@ add_catalog() {
             WANT_HFNAME+=("qwen3.5-2b_w8a8_rk3588.rkllm" "qwen3.5-2b_vision_rk3588.rknn")
             WANT_URL+=("" "")
             ;;
+        4b|qwen3.5-4b|qwen3.5-4b-video)
+            WANT_LOCAL+=("qwen3.5-4b_w8a8_rk3588.rkllm" "qwen3.5-4b_vision_rk3588.rknn")
+            WANT_REPO+=("Qwen3.5-4B-rk3588" "Qwen3.5-4B-rk3588")
+            WANT_HFNAME+=("qwen3.5-4b_w8a8_rk3588.rkllm" "qwen3.5-4b_vision_rk3588.rknn")
+            WANT_URL+=("" "")
+            ;;
         *)
-            echo "error: unknown model preset '${preset}' (use 0.8b, 2b, all)" >&2
+            echo "error: unknown model preset '${preset}' (use 0.8b, 2b, 4b, all)" >&2
             exit 1
             ;;
     esac
@@ -55,6 +61,7 @@ parse_selection() {
     if [[ "${raw}" == "1" || "${raw}" == "all" ]]; then
         add_catalog "0.8b"
         add_catalog "2b"
+        add_catalog "4b"
         return
     fi
     local IFS=',' preset

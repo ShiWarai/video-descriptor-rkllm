@@ -46,15 +46,26 @@ void stripSoftSwitches(std::string& text)
     erase_token("/think");
 }
 
-void collapseWhitespace(std::string& text)
+void trimWhitespaceEdges(std::string& text)
+{
+    while (!text.empty() && (text.front() == ' ' || text.front() == '\t' || text.front() == '\n' ||
+                             text.front() == '\r')) {
+        text.erase(text.begin());
+    }
+    while (!text.empty() && (text.back() == ' ' || text.back() == '\t' || text.back() == '\n' ||
+                           text.back() == '\r')) {
+        text.pop_back();
+    }
+}
+
+void collapseHorizontalWhitespace(std::string& text)
 {
     std::string collapsed;
     collapsed.reserve(text.size());
     bool prev_space = false;
     for (const char ch : text) {
-        const bool is_space = (ch == ' ' || ch == '\t' || ch == '\n' || ch == '\r');
-        if (is_space) {
-            if (!prev_space && !collapsed.empty()) {
+        if (ch == ' ' || ch == '\t') {
+            if (!prev_space && !collapsed.empty() && collapsed.back() != '\n' && collapsed.back() != '\r') {
                 collapsed.push_back(' ');
             }
             prev_space = true;
@@ -64,13 +75,7 @@ void collapseWhitespace(std::string& text)
         }
     }
     text = std::move(collapsed);
-
-    while (!text.empty() && (text.front() == ' ' || text.front() == '\n' || text.front() == '\r')) {
-        text.erase(text.begin());
-    }
-    while (!text.empty() && (text.back() == ' ' || text.back() == '\n' || text.back() == '\r')) {
-        text.pop_back();
-    }
+    trimWhitespaceEdges(text);
 }
 
 }  // namespace
@@ -104,7 +109,7 @@ std::string stripThinkingTags(std::string text)
     stripThinkingBlocks(text);
     // Qwen soft-switches echoed by the model.
     stripSoftSwitches(text);
-    collapseWhitespace(text);
+    collapseHorizontalWhitespace(text);
     return text;
 }
 

@@ -30,12 +30,26 @@ void test_strip_empty()
     expect(out.empty(), "only thinking block yields empty string");
 }
 
+void test_preserve_multiline_structure()
+{
+    const std::string raw =
+        "1) О чём видео?\n"
+        "Краткая суть.\n"
+        "\n"
+        "2) Надписи в видео\n"
+        "Текст на экране.";
+    const std::string out = vlm::stripThinkingTags(raw);
+    expect(out == raw, "multiline answer preserved");
+    expect(out.find('\n') != std::string::npos, "newlines kept");
+}
+
 }  // namespace
 
 int main()
 {
     test_strip_thinking();
     test_strip_empty();
+    test_preserve_multiline_structure();
     std::cout << "test_text_util: ok\n";
     return 0;
 }

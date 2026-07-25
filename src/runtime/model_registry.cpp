@@ -75,10 +75,18 @@ std::optional<std::string> ModelRegistry::resolveId(std::string_view requested) 
 
     const std::string norm = normalizeKey(requested);
 
-    // Short aliases: "2b", "0.8b"
+    // Short aliases: "4b", "2b", "0.8b"
+    if (norm == "4b" || norm == "qwen3.5-4b") {
+        for (const auto& model : models_) {
+            if (containsIgnoreCase(model.id, "4b")) {
+                return model.id;
+            }
+        }
+    }
     if (norm == "2b" || norm == "qwen3.5-2b") {
         for (const auto& model : models_) {
-            if (containsIgnoreCase(model.id, "2b") && !containsIgnoreCase(model.id, "0.8")) {
+            if (containsIgnoreCase(model.id, "2b") && !containsIgnoreCase(model.id, "0.8") &&
+                !containsIgnoreCase(model.id, "4b")) {
                 return model.id;
             }
         }
