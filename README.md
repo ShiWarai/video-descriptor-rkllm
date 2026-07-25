@@ -97,6 +97,8 @@ flowchart LR
 
 **Frame extract:** одна libav-сессия на запрос, однопроходное декодирование по таймстемпам (без fork `ffmpeg` на каждый кадр). Probe — через `avformat`, без `ffprobe`.
 
+**Vision encode:** 3× RKNN-контекста на NPU-ядрах `CORE_0` / `CORE_1` / `CORE_2`; воркеры параллельно забирают кадры из общей очереди с extract-потоком, embeddings собираются по индексу кадра.
+
 ### Входные форматы
 
 | Тип | ASR | Примечание |
@@ -387,6 +389,7 @@ LD_LIBRARY_PATH=./third_party/lib:./third_party/ffmpeg-rockchip/lib \
 ```
 include/
   core/frame_extractor.hpp  libav probe + decode (rkmpp / software GIF)
+  core/vision_encoder.hpp  3× RKNN vision encode (CORE_0/1/2), encodeStreaming queue
   core/rgb_frame.hpp        RGB888 буфер для vision encoder
   core/vision_prompts.hpp   тексты промптов (ru/eng, simple/detailed)
   core/text_util.hpp        stripThinkingTags, extractThinkingBlocks

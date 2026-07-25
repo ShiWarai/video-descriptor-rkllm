@@ -53,11 +53,19 @@ target_link_libraries(vlm_core PUBLIC
     pthread
 )
 
+set(VLM_RUNTIME_RPATH "${THIRD_PARTY_LIB};${FFMPEG_LIB_DIR}")
+
+function(vlm_set_runtime_rpath target)
+    set_target_properties(${target} PROPERTIES
+        BUILD_RPATH "${VLM_RUNTIME_RPATH}"
+        INSTALL_RPATH "${VLM_RUNTIME_RPATH}"
+    )
+endfunction()
+
 add_executable(vlm_cli src/app/cli_main.cpp)
 target_link_libraries(vlm_cli PRIVATE vlm_core)
+vlm_set_runtime_rpath(vlm_cli)
 set_target_properties(vlm_cli PROPERTIES
-    BUILD_RPATH "${THIRD_PARTY_LIB};${FFMPEG_LIB_DIR}"
-    INSTALL_RPATH "${THIRD_PARTY_LIB};${FFMPEG_LIB_DIR}"
     RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}"
     OUTPUT_NAME "VLM_VIDEO_NPU"
 )
@@ -67,9 +75,8 @@ add_executable(vlm_api_server
     src/api/http_server.cpp
 )
 target_link_libraries(vlm_api_server PRIVATE vlm_core)
+vlm_set_runtime_rpath(vlm_api_server)
 set_target_properties(vlm_api_server PROPERTIES
-    BUILD_RPATH "${THIRD_PARTY_LIB};${FFMPEG_LIB_DIR}"
-    INSTALL_RPATH "${THIRD_PARTY_LIB};${FFMPEG_LIB_DIR}"
     RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}"
 )
 
@@ -77,34 +84,42 @@ enable_testing()
 
 add_executable(test_model_registry tests/test_model_registry.cpp)
 target_link_libraries(test_model_registry PRIVATE vlm_core)
+vlm_set_runtime_rpath(test_model_registry)
 add_test(NAME test_model_registry COMMAND test_model_registry)
 
 add_executable(test_text_util tests/test_text_util.cpp)
 target_link_libraries(test_text_util PRIVATE vlm_core)
+vlm_set_runtime_rpath(test_text_util)
 add_test(NAME test_text_util COMMAND test_text_util)
 
 add_executable(test_config tests/test_config.cpp)
 target_link_libraries(test_config PRIVATE vlm_core)
+vlm_set_runtime_rpath(test_config)
 add_test(NAME test_config COMMAND test_config)
 
 add_executable(test_thinking_control tests/test_thinking_control.cpp)
 target_link_libraries(test_thinking_control PRIVATE vlm_core)
+vlm_set_runtime_rpath(test_thinking_control)
 add_test(NAME test_thinking_control COMMAND test_thinking_control)
 
 add_executable(test_frame_plan tests/test_frame_plan.cpp)
 target_link_libraries(test_frame_plan PRIVATE vlm_core)
+vlm_set_runtime_rpath(test_frame_plan)
 add_test(NAME test_frame_plan COMMAND test_frame_plan)
 
 add_executable(test_workdir tests/test_workdir.cpp)
 target_link_libraries(test_workdir PRIVATE vlm_core)
+vlm_set_runtime_rpath(test_workdir)
 add_test(NAME test_workdir COMMAND test_workdir)
 
 add_executable(test_rgb_frame tests/test_rgb_frame.cpp)
 target_link_libraries(test_rgb_frame PRIVATE vlm_core)
+vlm_set_runtime_rpath(test_rgb_frame)
 add_test(NAME test_rgb_frame COMMAND test_rgb_frame)
 
 add_executable(test_frame_extractor tests/test_frame_extractor.cpp)
 target_compile_definitions(test_frame_extractor PRIVATE
     TEST_FIXTURES_DIR="${CMAKE_SOURCE_DIR}/tests/fixtures")
 target_link_libraries(test_frame_extractor PRIVATE vlm_core)
+vlm_set_runtime_rpath(test_frame_extractor)
 add_test(NAME test_frame_extractor COMMAND test_frame_extractor)
