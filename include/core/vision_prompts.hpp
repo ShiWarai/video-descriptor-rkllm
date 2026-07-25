@@ -23,7 +23,7 @@ inline constexpr std::string_view kTaskDetailedRu =
     "1) О чём видео?\n"
     "Его краткая суть.\n"
     "2) Надписи в видео\n"
-    "Только надписи в кадрах видео, не речь.\n"
+    "Только надписи в кадрах видео, не речь и не субтитры.\n"
     "3) Предположительный жанр";
 
 inline constexpr std::string_view kTaskDetailedEng =
@@ -31,7 +31,7 @@ inline constexpr std::string_view kTaskDetailedEng =
     "1) What is the video about?\n"
     "Brief summary.\n"
     "2) On-screen text\n"
-    "Only captions/labels visible in the video frames, not speech.\n"
+    "Only captions/labels visible in the video frames, not speech and not subtitles.\n"
     "3) Likely genre";
 
 /** Build multimodal user prompt. prompt_mode: "simple" | "detailed".

@@ -3,8 +3,11 @@
 
 #include "core/llm_runtime.hpp"
 #include "core/text_util.hpp"
+#include "core/vision_prompts.hpp"
 
 namespace {
+
+using namespace vlm::prompts;
 
 void expect(bool cond, const char* msg)
 {
@@ -14,48 +17,55 @@ void expect(bool cond, const char* msg)
     }
 }
 
+std::string expectedPrompt(std::string_view frames, std::string_view task,
+                           std::string_view speech_prefix = {},
+                           std::string_view transcript = {})
+{
+    std::string prompt;
+    prompt += frames;
+    if (!transcript.empty()) {
+        prompt += speech_prefix;
+        prompt += transcript;
+        prompt += '"';
+    }
+    prompt += '\n';
+    prompt += task;
+    return prompt;
+}
+
 void test_prompt_simple_ru()
 {
-    const std::string p = vlm::LlmRuntime::buildUserVisionPrompt("ru", "simple");
-    expect(p.find("<image>") != std::string::npos, "has image tag");
-    expect(p.find("Тебе даны кадры из видео") != std::string::npos, "ru frames context");
-    expect(p.find("Опиши кратко и по делу видео.") != std::string::npos, "simple ru task");
+    const std::string p = buildUserVisionPrompt("ru", "simple");
+    expect(p == expectedPrompt(kFramesIntroRu, kTaskSimpleRu), "simple ru prompt");
     expect(p.find("/no_think") == std::string::npos, "no /no_think in prompt");
     expect(p.find("/think") == std::string::npos, "no /think in prompt");
-    expect(p.find("1) О чём") == std::string::npos, "no detailed sections");
+    expect(p.find(kTaskDetailedRu) == std::string::npos, "no detailed sections");
 }
 
 void test_prompt_detailed_ru()
 {
-    const std::string p = vlm::LlmRuntime::buildUserVisionPrompt("ru", "detailed");
+    const std::string p = buildUserVisionPrompt("ru", "detailed");
+    expect(p == expectedPrompt(kFramesIntroRu, kTaskDetailedRu), "detailed ru prompt");
     expect(p.find("/no_think") == std::string::npos, "no /no_think in prompt");
     expect(p.find("/think") == std::string::npos, "no /think in prompt");
-    expect(p.find("Тебе даны кадры из видео <image>") != std::string::npos, "frames first");
-    expect(p.find("Опиши это видео.") != std::string::npos, "has describe task");
-    expect(p.find("русск") != std::string::npos, "russian instruction");
-    expect(p.find("1) О чём видео?") != std::string::npos, "ru about item");
-    expect(p.find("2) Текст в видео") != std::string::npos, "ru on-screen text");
-    expect(p.find("Только надписи в кадрах видео, не речь.") != std::string::npos,
-           "ru on-screen not speech");
-    expect(p.find("3) Предположительный жанр") != std::string::npos, "ru genre");
 }
 
 void test_prompt_with_transcript()
 {
-    const std::string ru =
-        vlm::LlmRuntime::buildUserVisionPrompt("ru", "detailed", "привет");
-    expect(ru.find("с речью в видео: \"привет\"") != std::string::npos, "ru speech before task");
-    const auto speech_pos = ru.find("с речью в видео:");
-    const auto task_pos = ru.find("Опиши это видео.");
+    const std::string ru = buildUserVisionPrompt("ru", "detailed", "привет");
+    expect(ru == expectedPrompt(kFramesIntroRu, kTaskDetailedRu, kSpeechPrefixRu, "привет"),
+           "ru with transcript");
+    const auto speech_pos = ru.find(kSpeechPrefixRu);
+    const auto task_pos = ru.find(kTaskDetailedRu);
     expect(speech_pos != std::string::npos && task_pos != std::string::npos && speech_pos < task_pos,
            "speech before describe task");
     expect(ru.find("/no_think") == std::string::npos, "no think switch in prompt");
 
-    const std::string eng =
-        vlm::LlmRuntime::buildUserVisionPrompt("eng", "simple", "hello");
-    expect(eng.find("with speech in the video: \"hello\"") != std::string::npos, "eng speech");
-    const auto eng_speech = eng.find("with speech in the video:");
-    const auto eng_task = eng.find("Describe the video briefly");
+    const std::string eng = buildUserVisionPrompt("eng", "simple", "hello");
+    expect(eng == expectedPrompt(kFramesIntroEng, kTaskSimpleEng, kSpeechPrefixEng, "hello"),
+           "eng with transcript");
+    const auto eng_speech = eng.find(kSpeechPrefixEng);
+    const auto eng_task = eng.find(kTaskSimpleEng);
     expect(eng_speech != std::string::npos && eng_task != std::string::npos &&
                eng_speech < eng_task,
            "eng speech before task");
@@ -63,27 +73,30 @@ void test_prompt_with_transcript()
 
 void test_prompt_detailed_eng()
 {
-    const std::string p = vlm::LlmRuntime::buildUserVisionPrompt("eng", "detailed");
-    expect(p.find("You are given frames from a video <image>") != std::string::npos,
-           "eng frames context");
-    expect(p.find("Describe this video.") != std::string::npos, "has describe task");
-    expect(p.find("Answer in English:") != std::string::npos, "english instruction");
-    expect(p.find("1) What is the video about?") != std::string::npos, "eng about item");
-    expect(p.find("2) On-screen text") != std::string::npos, "eng on-screen text");
-    expect(p.find("Only captions/labels visible in the video frames, not speech.") !=
-               std::string::npos,
-           "eng on-screen not speech");
-    expect(p.find("3) Likely genre") != std::string::npos, "eng genre");
+    const std::string p = buildUserVisionPrompt("eng", "detailed");
+    expect(p == expectedPrompt(kFramesIntroEng, kTaskDetailedEng), "detailed eng prompt");
     expect(p.find("/think") == std::string::npos, "no /think in prompt");
 }
 
 void test_prompt_simple_eng()
 {
-    const std::string p = vlm::LlmRuntime::buildUserVisionPrompt("eng", "simple");
-    expect(p.find("Describe the video briefly and to the point.") != std::string::npos,
-           "simple eng text");
+    const std::string p = buildUserVisionPrompt("eng", "simple");
+    expect(p == expectedPrompt(kFramesIntroEng, kTaskSimpleEng), "simple eng prompt");
     expect(p.find("/think") == std::string::npos, "no /think in prompt");
-    expect(p.find("1) What is the video about?") == std::string::npos, "no detailed sections");
+    expect(p.find(kTaskDetailedEng) == std::string::npos, "no detailed sections");
+}
+
+void test_llm_runtime_delegates_to_prompts()
+{
+    expect(vlm::LlmRuntime::buildUserVisionPrompt("ru", "detailed") ==
+               buildUserVisionPrompt("ru", "detailed"),
+           "LlmRuntime ru detailed");
+    expect(vlm::LlmRuntime::buildUserVisionPrompt("en", "simple") ==
+               buildUserVisionPrompt("eng", "simple"),
+           "LlmRuntime normalizes lang aliases");
+    expect(vlm::LlmRuntime::buildUserVisionPrompt("eng", "detailed", "hi") ==
+               buildUserVisionPrompt("eng", "detailed", "hi"),
+           "LlmRuntime with transcript");
 }
 
 void test_strip_thinking_block()
@@ -134,6 +147,7 @@ int main()
     test_prompt_with_transcript();
     test_prompt_detailed_eng();
     test_prompt_simple_eng();
+    test_llm_runtime_delegates_to_prompts();
     test_strip_thinking_block();
     test_strip_empty_think();
     test_strip_echoed_soft_switch();
