@@ -61,12 +61,15 @@ curl -s localhost:8080/health    # liveness (loading|idle|busy)
 curl -s localhost:8080/ready     # readiness (503 пока грузятся модели)
 ```
 
+При заданном `VLM_API_KEY` (или `api_key` в config) все `/v1/*` требуют заголовок `Authorization: Bearer <key>`. `/health` и `/ready` остаются без auth.
+
 `POST /v1/video/analyze` (multipart): `file`, `model` (`qwen3.5-{0.8b,2b,4b}-video`), `frames`, `frame_budget`, `max_tokens`, `lang` (`ru`|`eng`), `prompt_mode`, `enable_thinking`, `temperature`, `transcript` (override ASR).
 
 Ответ: `description`, `transcript` (`status`: `ok`|`stub`|`error`|`skipped`|`provided`), `metrics` (`wall_ms`, `image_prep_ms`, `vision_encode_ms`, …), `frames_used`.
 
 ```bash
 curl -s localhost:8080/v1/video/analyze \
+  -H "Authorization: Bearer $VLM_API_KEY" \
   -F file=@test.mp4 -F model=qwen3.5-0.8b-video -F frames=8 -F lang=ru | jq
 ```
 
@@ -82,10 +85,11 @@ curl -s localhost:8080/v1/video/analyze \
 |------------|------------|
 | `WHISPER_RKNN_URL` | ASR; пусто = stub |
 | `VLM_DOWNLOAD_MODELS` | `0`, `0.8b`, `2b`, `4b`, `all` |
+| `VLM_API_KEY` | Bearer для `/v1/*`; пусто = без auth |
 | `VLM_FIX_FREQ` | NPU+CPU+DDR max (`scripts/fix_freq_rk3588.sh`, нужен `privileged`) |
 | `VLM_FIX_GPU_FREQ` | `0` = не трогать Mali GPU |
 
-Серверный config — [`config.example.json`](config.example.json): модели, `pipeline.*` (frame_budget, thinking, whisper_url).
+Серверный config — [`config.example.json`](config.example.json): модели, `api_key`, `pipeline.*`.
 
 ## Модели
 

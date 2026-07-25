@@ -14,13 +14,20 @@ from flask import Flask, render_template, request
 app = Flask(__name__)
 
 API_BASE = os.environ.get("VLM_API_URL", "http://127.0.0.1:8080")
+API_KEY = os.environ.get("VLM_API_KEY", "")
 UPLOAD_MAX_MB = int(os.environ.get("VLM_UPLOAD_MAX_MB", "256"))
 DEBUG = os.environ.get("WEB_CLIENT_DEBUG", "1") != "0"
 
 
+def api_headers() -> dict[str, str]:
+    if API_KEY:
+        return {"Authorization": f"Bearer {API_KEY}"}
+    return {}
+
+
 def fetch_models() -> list[dict]:
     try:
-        r = requests.get(f"{API_BASE}/v1/models", timeout=3)
+        r = requests.get(f"{API_BASE}/v1/models", headers=api_headers(), timeout=3)
         if r.ok:
             return r.json().get("data", [])
     except requests.RequestException:
@@ -42,7 +49,7 @@ def model_label(model_id: str) -> str:
 @app.route("/api/status", methods=["GET"])
 def api_status():
     try:
-        r = requests.get(f"{API_BASE}/v1/status", timeout=3)
+        r = requests.get(f"{API_BASE}/v1/status", headers=api_headers(), timeout=3)
         if r.ok:
             return r.json(), 200
         return {"status": "error", "error": f"API {r.status_code}"}, 502
@@ -54,7 +61,7 @@ def api_status():
 def index():
     status = {}
     try:
-        r = requests.get(f"{API_BASE}/v1/status", timeout=3)
+        r = requests.get(f"{API_BASE}/v1/status", headers=api_headers(), timeout=3)
         if r.ok:
             status = r.json()
     except requests.RequestException:
@@ -128,6 +135,7 @@ def analyze():
             f"{API_BASE}/v1/video/analyze",
             files={"file": (video.filename, video.stream, video.mimetype or "application/octet-stream")},
             data=data,
+            headers=api_headers(),
             timeout=3600,
         )
         client_metrics["client_wall_ms"] = (time.perf_counter() - t_client) * 1000.0

@@ -138,3 +138,8 @@ add_executable(test_subprocess tests/test_subprocess.cpp)
 target_link_libraries(test_subprocess PRIVATE vlm_core)
 vlm_set_runtime_rpath(test_subprocess)
 add_test(NAME test_subprocess COMMAND test_subprocess)
+
+add_executable(test_api_auth tests/test_api_auth.cpp)
+target_link_libraries(test_api_auth PRIVATE vlm_core)
+vlm_set_runtime_rpath(test_api_auth)
+add_test(NAME test_api_auth COMMAND test_api_auth)

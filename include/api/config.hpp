@@ -16,6 +16,7 @@ struct ServerConfig {
     std::string host = "0.0.0.0";
     int port = 8080;
     std::string workdir = "/tmp/vlm_work";
+    std::string api_key;
     std::optional<std::string> preload_model_id;
     ModelRegistry registry;
     PipelineConfig pipeline;
@@ -34,6 +35,9 @@ struct ServerConfig {
     if (j.contains("workdir")) {
         cfg.workdir = j["workdir"].get<std::string>();
         cfg.pipeline.workdir = cfg.workdir;
+    }
+    if (j.contains("api_key")) {
+        cfg.api_key = j["api_key"].get<std::string>();
     }
 
     if (j.contains("default_model")) {

@@ -49,6 +49,9 @@ void logStartup(const vlm::ServerConfig& cfg, const vlm::VideoContextPipeline& p
     } else {
         std::cerr << "whisper: disabled\n";
     }
+    if (!cfg.api_key.empty()) {
+        std::cerr << "api auth: enabled (Bearer token)\n";
+    }
 }
 
 }  // namespace
@@ -89,6 +92,11 @@ int main(int argc, char** argv)
         if (verbose_env[0] == '1' || verbose_env[0] == 't' || verbose_env[0] == 'T' ||
             verbose_env[0] == 'y' || verbose_env[0] == 'Y') {
             cfg.pipeline.verbose = true;
+        }
+    }
+    if (const char* api_key = std::getenv("VLM_API_KEY")) {
+        if (api_key[0] != '\0') {
+            cfg.api_key = api_key;
         }
     }
     if (cfg.pipeline.workdir.empty()) {
