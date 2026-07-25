@@ -2,8 +2,8 @@
 # Usage (local):
 #   docker compose -f docker-compose.dev.yml build
 #   docker compose -f docker-compose.dev.yml run --rm test
-# CI builds the image via docker/build-push-action with GHA cache, then:
-#   docker compose -f docker-compose.dev.yml run --rm --no-build test
+# CI builds the image via docker/build-push-action with GHA cache, then runs:
+#   docker run --rm --workdir /app video-descriptor-rkllm-builder sh -c '...'
 #
 # Local runtime (API + web on RK3588): use docker-compose.yml (+ prod/prerelease overlays).
 
