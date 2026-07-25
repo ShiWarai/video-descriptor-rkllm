@@ -231,52 +231,81 @@ public:
         int next = 0;
         int extracted = 0;
         bool done = false;
+        bool have_packet = false;
 
-        while (!done && av_read_frame(fmt_ctx_, packet.get()) >= 0) {
-            if (packet->stream_index != video_stream_idx_) {
-                av_packet_unref(packet.get());
-                continue;
+        auto processDecodedFrame = [&]() {
+            int64_t frame_pts = frame->best_effort_timestamp;
+            if (frame_pts == AV_NOPTS_VALUE) {
+                frame_pts = frame->pts;
+            }
+            if (frame_pts == AV_NOPTS_VALUE ||
+                frame_pts < target_pts[static_cast<std::size_t>(next)]) {
+                av_frame_unref(frame.get());
+                return;
+            }
+
+            RgbFrame out_rgb;
+            if (frameToRgb(frame.get(), filtered.get(), out_rgb)) {
+                if (on_frame(out_rgb, next)) {
+                    ++extracted;
+                }
+            }
+            ++next;
+            if (next >= static_cast<int>(times_sec.size())) {
+                done = true;
+            }
+            av_frame_unref(frame.get());
+        };
+
+        while (!done) {
+            if (!have_packet) {
+                if (av_read_frame(fmt_ctx_, packet.get()) < 0) {
+                    break;
+                }
+                if (packet->stream_index != video_stream_idx_) {
+                    av_packet_unref(packet.get());
+                    continue;
+                }
+                have_packet = true;
             }
 
             const int send_ret = avcodec_send_packet(codec_ctx_, packet.get());
+            if (send_ret == AVERROR(EAGAIN)) {
+                const int recv_ret = avcodec_receive_frame(codec_ctx_, frame.get());
+                if (recv_ret == 0) {
+                    processDecodedFrame();
+                    continue;
+                }
+                if (recv_ret == AVERROR(EAGAIN)) {
+                    std::cerr << "libav: decoder returned EAGAIN on both send and receive\n";
+                    break;
+                }
+                if (recv_ret == AVERROR_EOF) {
+                    break;
+                }
+                logFfmpegError(recv_ret, "libav: avcodec_receive_frame");
+                break;
+            }
             if (send_ret < 0) {
                 logFfmpegError(send_ret, "libav: avcodec_send_packet");
                 av_packet_unref(packet.get());
+                have_packet = false;
                 continue;
             }
+
             av_packet_unref(packet.get());
+            have_packet = false;
 
             while (!done) {
-                const int ret = avcodec_receive_frame(codec_ctx_, frame.get());
-                if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF) {
+                const int recv_ret = avcodec_receive_frame(codec_ctx_, frame.get());
+                if (recv_ret == AVERROR(EAGAIN) || recv_ret == AVERROR_EOF) {
                     break;
                 }
-                if (ret < 0) {
-                    logFfmpegError(ret, "libav: avcodec_receive_frame");
+                if (recv_ret < 0) {
+                    logFfmpegError(recv_ret, "libav: avcodec_receive_frame");
                     break;
                 }
-
-                int64_t frame_pts = frame->best_effort_timestamp;
-                if (frame_pts == AV_NOPTS_VALUE) {
-                    frame_pts = frame->pts;
-                }
-                if (frame_pts == AV_NOPTS_VALUE ||
-                    frame_pts < target_pts[static_cast<std::size_t>(next)]) {
-                    av_frame_unref(frame.get());
-                    continue;
-                }
-
-                RgbFrame out_rgb;
-                if (frameToRgb(frame.get(), filtered.get(), out_rgb)) {
-                    if (on_frame(out_rgb, next)) {
-                        ++extracted;
-                    }
-                }
-                ++next;
-                if (next >= static_cast<int>(times_sec.size())) {
-                    done = true;
-                }
-                av_frame_unref(frame.get());
+                processDecodedFrame();
             }
         }
 

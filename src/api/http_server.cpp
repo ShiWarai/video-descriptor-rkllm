@@ -11,8 +11,11 @@
 #include <sstream>
 #include <string_view>
 #include <thread>
+#include <utility>
+#include <vector>
 
 #include "api/openai_handlers.hpp"
+#include "core/subprocess.hpp"
 
 namespace vlm {
 
@@ -53,16 +56,18 @@ bool downloadModelsIfRequested()
     const std::string app = app_dir != nullptr ? app_dir : "/app";
     const std::string models = models_dir != nullptr ? models_dir : "/app/models";
     const char* model_urls = std::getenv("VLM_MODEL_URLS");
+    const auto script = std::filesystem::path(app) / "scripts" / "download_models.sh";
 
-    std::string cmd = "MODELS_DIR=\"" + models + "\" VLM_DOWNLOAD_MODELS=\"" +
-                      std::string(download) + "\"";
+    std::vector<std::pair<std::string, std::string>> env_overrides{
+        {"MODELS_DIR", models},
+        {"VLM_DOWNLOAD_MODELS", download},
+    };
     if (model_urls != nullptr && model_urls[0] != '\0') {
-        cmd += " VLM_MODEL_URLS=\"" + std::string(model_urls) + "\"";
+        env_overrides.emplace_back("VLM_MODEL_URLS", model_urls);
     }
-    cmd += " \"" + app + "/scripts/download_models.sh\"";
 
     std::cerr << "startup: downloading models (" << download << ") into " << models << '\n';
-    return std::system(cmd.c_str()) == 0;
+    return runBashScript(script, env_overrides);
 }
 
 std::string makeJobId()

@@ -16,6 +16,7 @@ set(VLM_CORE_SOURCES
     src/core/frame_extractor.cpp
     src/core/vision_encoder.cpp
     src/core/llm_runtime.cpp
+    src/core/subprocess.cpp
     src/core/text_util.cpp
     src/pipeline/audio_transcriber.cpp
     src/pipeline/video_context_pipeline.cpp
@@ -126,3 +127,8 @@ target_compile_definitions(test_frame_extractor PRIVATE
 target_link_libraries(test_frame_extractor PRIVATE vlm_core)
 vlm_set_runtime_rpath(test_frame_extractor)
 add_test(NAME test_frame_extractor COMMAND test_frame_extractor)
+
+add_executable(test_subprocess tests/test_subprocess.cpp)
+target_link_libraries(test_subprocess PRIVATE vlm_core)
+vlm_set_runtime_rpath(test_subprocess)
+add_test(NAME test_subprocess COMMAND test_subprocess)
