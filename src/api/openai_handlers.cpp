@@ -217,9 +217,13 @@ std::string saveVideoFromUrl(const std::string& video_url, const std::filesystem
         const std::string cmd =
             "curl -fsSL -o \"" + out.string() + "\" \"" + video_url + "\"";
         if (std::system(cmd.c_str()) != 0) {
+            std::error_code ec;
+            std::filesystem::remove(out, ec);
             throw std::runtime_error("Failed to download video");
         }
         if (!std::filesystem::exists(out) || std::filesystem::file_size(out) == 0) {
+            std::error_code ec;
+            std::filesystem::remove(out, ec);
             throw std::runtime_error("Downloaded video is empty");
         }
         return out.string();

@@ -21,6 +21,9 @@ void test_resolve()
     registry.add({.id = "qwen3.5-2b-video",
                   .vision_model_path = "b.rknn",
                   .llm_model_path = "b.rkllm"});
+    registry.add({.id = "qwen3.5-4b-video",
+                  .vision_model_path = "c.rknn",
+                  .llm_model_path = "c.rkllm"});
     registry.setDefaultModelId("qwen3.5-0.8b-video");
 
     const auto empty = registry.resolveId("");
@@ -29,6 +32,9 @@ void test_resolve()
 
     const auto alias = registry.resolveId("0.8b");
     expect(alias.has_value() && *alias == "qwen3.5-0.8b-video", "0.8b alias");
+
+    const auto alias4b = registry.resolveId("4b");
+    expect(alias4b.has_value() && *alias4b == "qwen3.5-4b-video", "4b alias");
 }
 
 }  // namespace

@@ -1,13 +1,19 @@
 #pragma once
 
+#include <array>
+#include <atomic>
+#include <condition_variable>
 #include <cstdint>
+#include <deque>
 #include <functional>
+#include <mutex>
+#include <optional>
 #include <string>
 #include <vector>
 
-#include <opencv2/core.hpp>
-#include <opencv2/imgproc.hpp>
 #include <rkllm/rknn_api.h>
+
+#include "core/rgb_frame.hpp"
 
 namespace vlm {
 
@@ -21,8 +27,24 @@ struct VisionModelInfo {
     int embed_size = 0;
 };
 
+struct PendingVisionFrame {
+    int index = 0;
+    RgbFrame frame;
+};
+
+/** Shared queue between frame extract and parallel vision workers. */
+struct VisionEncodeQueue {
+    std::mutex& mu;
+    std::condition_variable& cv;
+    std::deque<PendingVisionFrame>& pending;
+    const bool& extract_done;
+    const std::atomic<bool>& abort;
+};
+
 class VisionEncoder {
 public:
+    static constexpr int kWorkerCount = 3;
+
     VisionEncoder();
     ~VisionEncoder();
 
@@ -33,36 +55,53 @@ public:
 
     [[nodiscard]] bool load(const std::string& model_path, bool verbose = false);
     void unload();
-    [[nodiscard]] bool loaded() const noexcept { return ctx_ != 0; }
+    [[nodiscard]] bool loaded() const noexcept;
 
     [[nodiscard]] const VisionModelInfo& modelInfo() const noexcept { return info_; }
 
     [[nodiscard]] int computeFrameBudget(int context_len, int max_new_tokens,
                                          int prompt_reserve) const;
 
-    [[nodiscard]] bool encodeFrames(const std::vector<cv::Mat>& bgr_frames,
+    [[nodiscard]] bool encodeFrames(const std::vector<RgbFrame>& frames,
                                     VisionProgressCallback progress = nullptr);
 
-    /** Append one BGR frame to the embedding buffer (caller must clear() first). */
-    [[nodiscard]] bool appendFrame(const cv::Mat& bgr_frame);
+    /**
+     * Parallel encode from a shared queue (3 RKNN contexts on CORE_0/1/2).
+     * Embeddings are assembled in ascending frame index order; failed frames are skipped.
+     */
+    [[nodiscard]] int encodeStreaming(VisionEncodeQueue& queue, int total_hint,
+                                      VisionProgressCallback progress = nullptr);
+
+    /** Append one model-sized RGB frame (caller must clear() first). Uses worker 0. */
+    [[nodiscard]] bool appendFrame(const RgbFrame& frame);
 
     void clear();
     [[nodiscard]] std::size_t frameCount() const noexcept { return frame_count_; }
     [[nodiscard]] const std::vector<float>& embeddings() const noexcept { return embeddings_; }
 
 private:
-    rknn_context ctx_ = 0;
+    struct WorkerSlot {
+        rknn_context ctx = 0;
+        rknn_core_mask core_mask = RKNN_NPU_CORE_0;
+    };
+
+    std::array<WorkerSlot, kWorkerCount> workers_{};
     rknn_input_output_num io_num_{};
     std::vector<rknn_tensor_attr> input_attrs_;
     std::vector<rknn_tensor_attr> output_attrs_;
     VisionModelInfo info_;
     std::vector<float> embeddings_;
     std::size_t frame_count_ = 0;
-    cv::Mat working_img_;
     bool verbose_ = false;
 
     [[nodiscard]] bool initFromPath(std::string_view model_path);
-    [[nodiscard]] int processOneImage(const cv::Mat& rgb_resized);
+    [[nodiscard]] bool initWorker(WorkerSlot& worker, std::string_view model_path);
+    void destroyWorkers();
+    void queryModelInfoFromPrimary();
+    [[nodiscard]] std::size_t floatsPerImage() const;
+    [[nodiscard]] bool processOneImage(rknn_context ctx, const RgbFrame& rgb,
+                                       std::vector<float>& out) const;
+    void assembleEmbeddings(const std::vector<std::optional<std::vector<float>>>& slots);
     void dumpTensorAttr(const rknn_tensor_attr& attr) const;
 };
 

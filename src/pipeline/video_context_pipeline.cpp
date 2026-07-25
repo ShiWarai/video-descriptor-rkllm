@@ -10,6 +10,10 @@
 #include <iostream>
 #include <mutex>
 
+#if defined(__GLIBC__)
+#include <malloc.h>
+#endif
+
 #include "core/frame_extractor.hpp"
 #include "core/media_util.hpp"
 #include "core/llm_runtime.hpp"
@@ -32,7 +36,6 @@ using Clock = std::chrono::steady_clock;
 VideoContextPipeline::VideoContextPipeline(ModelRegistry registry, PipelineConfig config)
     : registry_(std::move(registry)),
       config_(std::move(config)),
-      extractor_(config_.ffmpeg_bin_path),
       transcriber_(makeAudioTranscriber(config_))
 {
 }
@@ -155,7 +158,12 @@ AnalyzeResult VideoContextPipeline::analyze(const AnalyzeRequest& request)
     AnalyzeResult result;
     const auto t_total = Clock::now();
     auto finish = [&]() -> AnalyzeResult& {
+        // Drop any leftover full-res frames and embeddings from this request.
+        vision_.clear();
         result.metrics["total_ms"] = elapsedMs(t_total);
+#if defined(__GLIBC__)
+        malloc_trim(0);
+#endif
         return result;
     };
 
@@ -189,12 +197,13 @@ AnalyzeResult VideoContextPipeline::analyze(const AnalyzeRequest& request)
     struct PrepState {
         std::mutex mu;
         std::condition_variable cv;
-        std::deque<cv::Mat> pending_frames;
+        std::deque<PendingVisionFrame> pending_frames;
         bool extract_done = false;
         int extract_count = 0;
         VideoInfo video_info{};
         std::atomic<bool> model_ready{false};
         std::atomic<bool> model_load_finished{false};
+        std::atomic<bool> encode_abort{false};
         bool model_ok = false;
         double model_load_ms = 0;
         double extract_ms = 0;
@@ -248,14 +257,18 @@ AnalyzeResult VideoContextPipeline::analyze(const AnalyzeRequest& request)
     auto extract_fut = std::async(std::launch::async, [&] {
         const auto t0 = Clock::now();
         VideoInfo info;
+        // Model-sized letterbox in ffmpeg/RGA (Qwen3.5-VL = 448). Do not touch vision_
+        // here — model load runs in parallel.
         const int got = extractor_.extractFramesStreaming(
             request.video_path.string(), effective,
-            [&](cv::Mat frame, int /*index*/, int /*total*/) {
+            [&](RgbFrame frame, int index, int /*total*/) {
                 std::lock_guard lock(prep.mu);
-                prep.pending_frames.push_back(std::move(frame));
+                prep.pending_frames.push_back(
+                    PendingVisionFrame{.index = index, .frame = std::move(frame)});
                 ++prep.extract_count;
-                prep.cv.notify_one();
+                prep.cv.notify_all();
             },
+            FrameExtractor::kDefaultVisionSize, FrameExtractor::kDefaultVisionSize,
             extract_progress, &info);
         {
             std::lock_guard lock(prep.mu);
@@ -267,7 +280,6 @@ AnalyzeResult VideoContextPipeline::analyze(const AnalyzeRequest& request)
         return got;
     });
 
-    vision_.clear();
     int encoded = 0;
     const auto t_encode = Clock::now();
     VisionProgressCallback vision_progress;
@@ -280,41 +292,20 @@ AnalyzeResult VideoContextPipeline::analyze(const AnalyzeRequest& request)
         };
     }
 
-    while (true) {
+    {
         std::unique_lock lock(prep.mu);
-        prep.cv.wait(lock, [&] {
-            if (prep.model_ready.load() && !prep.pending_frames.empty()) {
-                return true;
-            }
-            if (prep.extract_done && prep.pending_frames.empty()) {
-                return true;
-            }
-            if (prep.model_load_finished.load() && !prep.model_ok) {
-                return true;
-            }
-            return false;
-        });
+        prep.cv.wait(lock, [&] { return prep.model_load_finished.load(); });
+    }
 
-        while (prep.model_ready.load() && !prep.pending_frames.empty()) {
-            cv::Mat frame = std::move(prep.pending_frames.front());
-            prep.pending_frames.pop_front();
-            lock.unlock();
-            if (vision_.appendFrame(frame)) {
-                ++encoded;
-                if (vision_progress) {
-                    const int total = prep.extract_done ? prep.extract_count : effective;
-                    vision_progress(encoded, std::max(total, encoded));
-                }
-            }
-            lock.lock();
-        }
-
-        if (prep.extract_done && prep.pending_frames.empty()) {
-            break;
-        }
-        if (prep.model_load_finished.load() && !prep.model_ok) {
-            break;
-        }
+    if (prep.model_ok) {
+        vision_.clear();
+        VisionEncodeQueue queue{prep.mu, prep.cv, prep.pending_frames, prep.extract_done,
+                                prep.encode_abort};
+        prep.cv.notify_all();
+        encoded = vision_.encodeStreaming(queue, effective, vision_progress);
+    } else {
+        prep.encode_abort = true;
+        prep.cv.notify_all();
     }
 
     const int extracted = extract_fut.get();
@@ -401,6 +392,9 @@ AnalyzeResult VideoContextPipeline::analyze(const AnalyzeRequest& request)
         if (llm_.lastTruncatedByMaxTokens()) {
             result.metrics["truncated"] = 1;
         }
+        // Embeddings are no longer needed; release capacity until the next request.
+        vision_.clear();
+        llm_.clearKvCache();
     }
     return finish();
 }

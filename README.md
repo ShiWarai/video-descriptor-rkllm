@@ -72,8 +72,7 @@ docker compose -f docker-compose.yml -f docker-compose.prerelease.yml up -d
 | OS | Ubuntu 22.04 / 24.04 arm64 |
 | NPU | RKNPU2 driver, устройства `/dev/mpp_service`, `/dev/rga`, `/dev/dri`, `/dev/dma_heap` |
 | Runtime | RKLLM 1.3.0+, RKNN (в `third_party/lib`) |
-| OpenCV | host: `libopencv-dev` (core+imgproc); Docker: минимальная сборка в образе (~без Mesa/LLVM) |
-| ffmpeg | vendored **ffmpeg-rockchip** (`third_party/ffmpeg-rockchip/`) |
+| ffmpeg | vendored **ffmpeg-rockchip** (`third_party/ffmpeg-rockchip/`) — libav API для кадров (MPP+RGA), CLI `ffmpeg` только для аудио |
 | Модели | не в git — volume `./models` или `VLM_DOWNLOAD_MODELS` в `.env` |
 
 ---
@@ -94,14 +93,18 @@ flowchart LR
   API --> Web[web_client Flask]
 ```
 
-Сервис: видео/GIF → **параллельно** кадры (ffmpeg-rockchip) + (для видео) аудио → ASR ([whisper-rknn](https://github.com/ShiWarai/whisper-rknn)) + vision encoder (RKNN) → multimodal LLM (RKLLM) → **description** + **transcript**.
+Сервис: видео/GIF → **параллельно** кадры (libav: `h264_rkmpp` + `scale_rkrga` → RGB 448×448) + (для видео) аудио (CLI ffmpeg) → ASR ([whisper-rknn](https://github.com/ShiWarai/whisper-rknn)) + vision encoder (RKNN) → multimodal LLM (RKLLM) → **description** + **transcript**.
+
+**Frame extract:** одна libav-сессия на запрос, однопроходное декодирование по таймстемпам (без fork `ffmpeg` на каждый кадр). Probe — через `avformat`, без `ffprobe`.
+
+**Vision encode:** 3× RKNN-контекста на NPU-ядрах `CORE_0` / `CORE_1` / `CORE_2`; воркеры параллельно забирают кадры из общей очереди с extract-потоком, embeddings собираются по индексу кадра.
 
 ### Входные форматы
 
 | Тип | ASR | Примечание |
 |-----|-----|------------|
 | Видео (mp4, mkv, …) | да | транскрипт в prompt и в ответе |
-| **GIF** | **нет** | `transcript.status=skipped`; кадры через software ffmpeg (без rkmpp) |
+| **GIF** | **нет** | `transcript.status=skipped`; кадры через software libav (без rkmpp) |
 
 ASR и vision encode идут параллельно. Для видео LLM **дожидается** ASR (если `status=ok` / `provided`) и вставляет речь **в начало prompt** (кадры + речь, затем задание). В ответе API транскрипт также возвращается отдельно.
 
@@ -132,6 +135,8 @@ Sampling для thinking задаётся отдельно: `thinking_temperatur
 **Whisper:** внешний [whisper-rknn](https://github.com/ShiWarai/whisper-rknn). URL задаётся в `.env` (`WHISPER_RKNN_URL`). Пусто — stub (`transcript.status=stub`).
 
 **Метрики времени:** этапы `transcript_ms`, `frame_extract_ms`, `vision_encode_ms` и др. считаются **по отдельности** (wall каждого потока). В UI проценты от `wall_ms` могут суммироваться >100% — этапы частично идут **параллельно**, это нормально.
+
+**Память при долгой работе:** после каждого запроса embeddings и буферы ответа освобождаются (`shrink_to_fit` + `malloc_trim`). В Docker задано `MALLOC_ARENA_MAX=2`, чтобы glibc не плодил лишние malloc-арены в многопоточном httplib (это не reload модели, только поведение аллокатора).
 
 ---
 
@@ -176,7 +181,7 @@ startupProbe:
 | Поле | По умолчанию | Описание |
 |------|--------------|----------|
 | `file` | — | Видео или GIF (обязательно) |
-| `model` | из `config.json` | `qwen3.5-0.8b-video` / `qwen3.5-2b-video` |
+| `model` | из `config.json` | `qwen3.5-0.8b-video` / `qwen3.5-2b-video` / `qwen3.5-4b-video` |
 | `frames` | 8 | Сколько кадров запросить |
 | `frame_budget` | из config | Потолок кадров с учётом контекста |
 | `max_tokens` | из config | Лимит генерации LLM |
@@ -234,7 +239,7 @@ curl -s http://localhost:8080/v1/chat/completions \
 
 ## CLI
 
-Локальная сборка (нужен `libopencv-dev` на хосте):
+Локальная сборка:
 
 ```bash
 mkdir -p build && cd build
@@ -272,9 +277,13 @@ docker compose up -d
 | Переменная | Описание |
 |------------|----------|
 | `WHISPER_RKNN_URL` | URL whisper-rknn. Пусто = stub ASR без транскрипции |
-| `VLM_DOWNLOAD_MODELS` | Автоподгрузка моделей VLM: `0`, `0.8b`, `2b`, `all` |
+| `VLM_DOWNLOAD_MODELS` | Автоподгрузка моделей VLM: `0`, `0.8b`, `2b`, `4b`, `all` |
 | `VLM_MODEL_URLS` | Свои URL весов: `имя_файла=https://...` |
 | `VLM_VERBOSE` | Подробные логи API (`1` / `0`) |
+| `VLM_FIX_FREQ` | При старте API: NPU + CPU + LPDDR4 на максимум (`1` / `0`, см. `scripts/fix_freq_rk3588.sh`). GPU — отдельно через `VLM_FIX_GPU_FREQ` |
+| `VLM_FIX_GPU_FREQ` | Зафиксировать Mali GPU (`1` / `0`, по умолчанию `1`; `0` — только NPU/CPU/DDR) |
+
+`VLM_FIX_FREQ` нужен `privileged: true` в compose (уже включён) — пишет в host sysfs. Частоты берутся как **максимум** из `available_frequencies` (Orange Pi 5: big CPU ≈ 2256 MHz, DDR ≈ 2112 MHz, GPU/NPU ≈ 1 GHz).
 
 `WHISPER_RKNN_URL` переопределяет `pipeline.whisper_url` из `config.json`.
 
@@ -304,7 +313,7 @@ Transcribe: `POST {WHISPER_RKNN_URL}/transcribe` (multipart, поле `file`).
 | `preload_model` | загрузить на старте (опционально) |
 | `pipeline.frame_budget` | потолок кадров (28 по умолчанию) |
 | `pipeline.default_max_tokens` | лимит генерации LLM (1024 по умолчанию) |
-| `pipeline.ffmpeg_bin_path` | `third_party/ffmpeg-rockchip/bin` |
+| `pipeline.ffmpeg_bin_path` | `third_party/ffmpeg-rockchip/bin` — только извлечение аудио для ASR |
 | `pipeline.whisper_url` | URL whisper-rknn (пусто = stub; в Docker обычно через `.env`) |
 | `pipeline.enable_thinking` | thinking mode по умолчанию (`false`) |
 | `pipeline.thinking_temperature` | temperature при thinking (`0.6`) |
@@ -322,15 +331,17 @@ Transcribe: `POST {WHISPER_RKNN_URL}/transcribe` (multipart, поле `file`).
 |--------|---------------|-------------|--------------|
 | Qwen3.5-0.8B | `qwen3.5-0.8b_vision_rk3588.rknn` | `qwen3.5-0.8b_w8a8_rk3588.rkllm` | [HF](https://huggingface.co/Qengineering/Qwen3.5-0.8B-rk3588) |
 | Qwen3.5-2B | `qwen3.5-2b_vision_rk3588.rknn` | `qwen3.5-2b_w8a8_rk3588.rkllm` | [HF](https://huggingface.co/Qengineering/Qwen3.5-2B-rk3588) |
+| Qwen3.5-4B | `qwen3.5-4b_vision_rk3588.rknn` | `qwen3.5-4b_w8a8_rk3588.rkllm` | [HF](https://huggingface.co/Qengineering/Qwen3.5-4B-rk3588) |
 
-**Автоподгрузка (opt-in):** в `.env` задайте `VLM_DOWNLOAD_MODELS=0.8b` (или `2b`, `all`, `0.8b,2b`). Свои URL: `VLM_MODEL_URLS=имя_файла=https://...`
+**Автоподгрузка (opt-in):** в `.env` задайте `VLM_DOWNLOAD_MODELS=0.8b` (или `2b`, `4b`, `all`, `0.8b,2b,4b`). Свои URL: `VLM_MODEL_URLS=имя_файла=https://...`
 
 | `VLM_DOWNLOAD_MODELS` | Что качается |
 |-----------------------|--------------|
 | `0` / не задано | ничего |
 | `0.8b` | только 0.8B |
 | `2b` | только 2B |
-| `all` / `1` | обе |
+| `4b` | только 4B |
+| `all` / `1` | все три |
 
 ```bash
 # в .env: VLM_DOWNLOAD_MODELS=0.8b
@@ -350,16 +361,18 @@ MODELS_DIR=./models ./scripts/download_models.sh 0.8b
 На хосте (RK3588 / arm64):
 
 ```bash
-sudo apt-get install -y build-essential cmake libopencv-dev
+sudo apt-get install -y build-essential cmake
 mkdir -p build && cd build
 cmake ..
 make -j$(nproc)
 ctest --output-on-failure
 ```
 
-Unit-тесты (без NPU/моделей): `test_config`, `test_frame_plan`, `test_model_registry`, `test_text_util`, `test_thinking_control`, `test_workdir` — конфиг, план кадров, промпты, strip thinking-тегов.
+Unit-тесты (без NPU/моделей): `test_config`, `test_frame_plan`, `test_frame_extractor`, `test_rgb_frame`, `test_model_registry`, `test_text_util`, `test_thinking_control`, `test_workdir` — конфиг, план кадров, libav probe + GIF extract (fixtures в `tests/fixtures/`), `RgbFrame`, промпты, strip thinking-тегов. Декод mp4 через rkmpp в `test_frame_extractor` выполняется только при наличии `/dev/mpp_service` (в CI пропускается).
 
-Или unit-тесты в Docker (как в CI, без NPU/моделей; OpenCV собирается в builder-образе):
+Сборка встраивает RPATH к vendored `.so` (`third_party/lib`, `ffmpeg-rockchip/lib`); `LD_LIBRARY_PATH` для локального запуска бинарников из `build/` обычно не нужен.
+
+Или unit-тесты в Docker (как в CI, без NPU/моделей):
 
 ```bash
 docker compose -f docker-compose.dev.yml build
@@ -377,13 +390,17 @@ LD_LIBRARY_PATH=./third_party/lib:./third_party/ffmpeg-rockchip/lib \
 
 ```
 include/
+  core/frame_extractor.hpp  libav probe + decode (rkmpp / software GIF)
+  core/vision_encoder.hpp  3× RKNN vision encode (CORE_0/1/2), encodeStreaming queue
+  core/rgb_frame.hpp        RGB888 буфер для vision encoder
   core/vision_prompts.hpp   тексты промптов (ru/eng, simple/detailed)
   core/text_util.hpp        stripThinkingTags, extractThinkingBlocks
 src/                  реализация C++
 tests/                unit-тесты (ctest)
+tests/fixtures/       test.mp4, test.gif для test_frame_extractor
 third_party/
   lib/                librkllmrt.so, librknnrt.so
-  ffmpeg-rockchip/    vendored ffmpeg + Rockchip libs
+  ffmpeg-rockchip/    vendored libav headers + libs + bin/ffmpeg (audio)
   rkllm/              C API headers
 scripts/              download_models.sh, docker-entrypoint.sh
 web_client/           Flask UI (описание, транскрипт, метрики)
@@ -402,7 +419,7 @@ models/               веса (volume mount)
 | **Deploy → notify-telegram** | после test / prerelease | уведомление в Telegram (см. ниже) |
 | **Publish** | успешный Deploy на `main` | `:main` и `:${sha}` (отдельный workflow) |
 
-Образы в GHCR: API — **linux/arm64 only**; web — **linux/amd64 + arm64** (Flask UI без NPU). Runtime API: минимальный OpenCV (core+imgproc) без Mesa/LLVM из apt.
+Образы в GHCR: API — **linux/arm64 only**; web — **linux/amd64 + arm64** (Flask UI без NPU).
 
 ### Telegram
 

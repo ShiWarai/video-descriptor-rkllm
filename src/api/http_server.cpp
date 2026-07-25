@@ -11,8 +11,11 @@
 #include <sstream>
 #include <string_view>
 #include <thread>
+#include <utility>
+#include <vector>
 
 #include "api/openai_handlers.hpp"
+#include "core/subprocess.hpp"
 
 namespace vlm {
 
@@ -53,16 +56,18 @@ bool downloadModelsIfRequested()
     const std::string app = app_dir != nullptr ? app_dir : "/app";
     const std::string models = models_dir != nullptr ? models_dir : "/app/models";
     const char* model_urls = std::getenv("VLM_MODEL_URLS");
+    const auto script = std::filesystem::path(app) / "scripts" / "download_models.sh";
 
-    std::string cmd = "MODELS_DIR=\"" + models + "\" VLM_DOWNLOAD_MODELS=\"" +
-                      std::string(download) + "\"";
+    std::vector<std::pair<std::string, std::string>> env_overrides{
+        {"MODELS_DIR", models},
+        {"VLM_DOWNLOAD_MODELS", download},
+    };
     if (model_urls != nullptr && model_urls[0] != '\0') {
-        cmd += " VLM_MODEL_URLS=\"" + std::string(model_urls) + "\"";
+        env_overrides.emplace_back("VLM_MODEL_URLS", model_urls);
     }
-    cmd += " \"" + app + "/scripts/download_models.sh\"";
 
     std::cerr << "startup: downloading models (" << download << ") into " << models << '\n';
-    return std::system(cmd.c_str()) == 0;
+    return runBashScript(script, env_overrides);
 }
 
 std::string makeJobId()
@@ -119,12 +124,34 @@ AnalyzeResult HttpServer::runInference(AnalyzeRequest request)
         std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - queue_start)
             .count();
 
-    state_->onJobStarted(job_id, request.model);
-    AnalyzeResult result = pipeline_->analyze(request);
-    state_->setLoadedModelId(pipeline_->loadedModelId());
-    state_->onJobFinished();
+    struct JobGuard {
+        ServiceState* state = nullptr;
+        std::filesystem::path video_path;
+        std::filesystem::path workdir;
+        bool started = false;
+        ~JobGuard()
+        {
+            if (started && state) {
+                state->onJobFinished();
+            }
+            removeWorkFileIfOwned(video_path, workdir);
+        }
+    } guard{state_.get(), video_path, config_.workdir, false};
 
-    removeWorkFileIfOwned(video_path, config_.workdir);
+    state_->onJobStarted(job_id, request.model);
+    guard.started = true;
+
+    AnalyzeResult result;
+    try {
+        result = pipeline_->analyze(request);
+    } catch (const std::exception& e) {
+        result.error = e.what();
+        std::cerr << '[' << job_id << "] analyze exception: " << e.what() << '\n';
+    } catch (...) {
+        result.error = "Unknown analyze failure";
+        std::cerr << '[' << job_id << "] analyze unknown exception" << '\n';
+    }
+    state_->setLoadedModelId(pipeline_->loadedModelId());
 
     const double wall_ms =
         std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - wall_start)
@@ -169,6 +196,9 @@ void HttpServer::run()
     std::cerr << "workdir cleared: " << config_.workdir << '\n';
 
     httplib::Server svr;
+    // Cap upload size so concurrent buffered bodies cannot grow unbounded.
+    constexpr std::size_t kMaxUploadBytes = 512ull * 1024ull * 1024ull;  // 512 MiB
+    svr.set_payload_max_length(kMaxUploadBytes);
 
     svr.set_logger([](const httplib::Request& req, const httplib::Response& res) {
         if (req.path == "/health" || req.path == "/ready" || req.path == "/v1/status") {
@@ -300,35 +330,44 @@ void HttpServer::run()
         }
 
         AnalyzeRequest areq{.video_path = saved};
-        if (const auto model = formField(req, "model")) {
-            areq.model = *model;
-        }
-        if (const auto frames = formField(req, "frames")) {
-            areq.max_frames = std::stoi(*frames);
-        } else {
-            areq.max_frames = config_.pipeline.default_frames;
-        }
-        if (const auto frame_budget = formField(req, "frame_budget")) {
-            areq.frame_budget = std::stoi(*frame_budget);
-        }
-        if (const auto lang = formField(req, "lang")) {
-            areq.lang = *lang;
-        }
-        if (const auto prompt_mode = formField(req, "prompt_mode")) {
-            areq.prompt_mode = *prompt_mode;
-        }
-        if (const auto max_tokens = formField(req, "max_tokens")) {
-            areq.max_tokens = std::stoi(*max_tokens);
-        }
-        if (const auto thinking = formField(req, "enable_thinking")) {
-            const std::string v = *thinking;
-            areq.enable_thinking = (v == "1" || v == "true" || v == "yes" || v == "on");
-        }
-        if (const auto temperature = formField(req, "temperature")) {
-            areq.temperature = std::stof(*temperature);
-        }
-        if (const auto transcript = formField(req, "transcript")) {
-            areq.transcript_override = *transcript;
+        try {
+            if (const auto model = formField(req, "model")) {
+                areq.model = *model;
+            }
+            if (const auto frames = formField(req, "frames")) {
+                areq.max_frames = std::stoi(*frames);
+            } else {
+                areq.max_frames = config_.pipeline.default_frames;
+            }
+            if (const auto frame_budget = formField(req, "frame_budget")) {
+                areq.frame_budget = std::stoi(*frame_budget);
+            }
+            if (const auto lang = formField(req, "lang")) {
+                areq.lang = *lang;
+            }
+            if (const auto prompt_mode = formField(req, "prompt_mode")) {
+                areq.prompt_mode = *prompt_mode;
+            }
+            if (const auto max_tokens = formField(req, "max_tokens")) {
+                areq.max_tokens = std::stoi(*max_tokens);
+            }
+            if (const auto thinking = formField(req, "enable_thinking")) {
+                const std::string v = *thinking;
+                areq.enable_thinking = (v == "1" || v == "true" || v == "yes" || v == "on");
+            }
+            if (const auto temperature = formField(req, "temperature")) {
+                areq.temperature = std::stof(*temperature);
+            }
+            if (const auto transcript = formField(req, "transcript")) {
+                areq.transcript_override = *transcript;
+            }
+        } catch (const std::exception& e) {
+            removeWorkFileIfOwned(saved, config_.workdir);
+            res.status = 400;
+            res.set_content(nlohmann::json{{"error", std::string("invalid form field: ") + e.what()}}
+                                .dump(),
+                            "application/json");
+            return;
         }
 
         std::cerr << "  params: model=" << (areq.model.empty() ? "(default)" : areq.model)
