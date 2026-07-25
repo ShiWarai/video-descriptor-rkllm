@@ -27,8 +27,8 @@ void test_prompt_simple_ru()
 void test_prompt_detailed_ru()
 {
     const std::string p = vlm::LlmRuntime::buildUserVisionPrompt("ru", false, "detailed");
-    expect(p.find("/no_think") != std::string::npos, "has /no_think");
-    expect(p.find(" /think") == std::string::npos, "no bare /think switch");
+    expect(p.find("\n/no_think") != std::string::npos, "has /no_think");
+    expect(p.find("\n/think") == std::string::npos, "no bare /think switch");
     expect(p.find("Тебе даны кадры из видео <image>") != std::string::npos, "frames first");
     expect(p.find("Опиши это видео.") != std::string::npos, "has describe task");
     expect(p.find("русск") != std::string::npos, "russian instruction");
@@ -66,7 +66,7 @@ void test_prompt_detailed_think_eng()
 {
     const std::string p = vlm::LlmRuntime::buildUserVisionPrompt("eng", true, "detailed");
     expect(p.find("/no_think") == std::string::npos, "no /no_think when thinking on");
-    expect(p.find(" /think") != std::string::npos, "has /think");
+    expect(p.find("\n/think") != std::string::npos, "has /think");
     expect(p.find("You are given frames from a video <image>") != std::string::npos,
            "eng frames context");
     expect(p.find("Describe this video.") != std::string::npos, "has describe task");
@@ -84,7 +84,7 @@ void test_prompt_simple_eng()
     const std::string p = vlm::LlmRuntime::buildUserVisionPrompt("eng", true, "simple");
     expect(p.find("Describe the video briefly and to the point.") != std::string::npos,
            "simple eng text");
-    expect(p.find(" /think") != std::string::npos, "has /think");
+    expect(p.find("\n/think") != std::string::npos, "has /think");
     expect(p.find("1) What is the video about?") == std::string::npos, "no detailed sections");
 }
 

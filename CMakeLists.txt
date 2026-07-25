@@ -8,7 +8,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wextra -fexceptions -pthread -O3")
 
 find_package(PkgConfig REQUIRED)
-pkg_check_modules(OPENCV REQUIRED opencv4)
+find_package(OpenCV REQUIRED COMPONENTS core imgproc)
 
 set(THIRD_PARTY_LIB "${CMAKE_SOURCE_DIR}/third_party/lib")
 set(FFMPEG_BIN_PATH "${CMAKE_SOURCE_DIR}/third_party/ffmpeg-rockchip/bin" CACHE PATH "Path to ffmpeg-rockchip binaries")
@@ -31,11 +31,11 @@ target_include_directories(vlm_core PUBLIC
     ${CMAKE_SOURCE_DIR}/include
     ${CMAKE_SOURCE_DIR}/third_party
     ${CMAKE_SOURCE_DIR}/third_party/rkllm
-    ${OPENCV_INCLUDE_DIRS}
+    ${OpenCV_INCLUDE_DIRS}
 )
 target_compile_definitions(vlm_core PUBLIC FFMPEG_BIN_PATH="${FFMPEG_BIN_PATH}")
 target_link_libraries(vlm_core PUBLIC
-    ${OPENCV_LIBRARIES}
+    ${OpenCV_LIBS}
     ${THIRD_PARTY_LIB}/librknnrt.so
     ${THIRD_PARTY_LIB}/librkllmrt.so
     pthread

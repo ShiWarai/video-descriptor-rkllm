@@ -70,6 +70,7 @@ docker compose -f docker-compose.yml -f docker-compose.prerelease.yml up -d
 | OS | Ubuntu 22.04 / 24.04 arm64 |
 | NPU | RKNPU2 driver, устройства `/dev/mpp_service`, `/dev/rga`, `/dev/dri`, `/dev/dma_heap` |
 | Runtime | RKLLM 1.3.0+, RKNN (в `third_party/lib`) |
+| OpenCV | host: `libopencv-dev` (core+imgproc); Docker: минимальная сборка в образе (~без Mesa/LLVM) |
 | ffmpeg | vendored **ffmpeg-rockchip** (`third_party/ffmpeg-rockchip/`) |
 | Модели | не в git — volume `./models` или `VLM_DOWNLOAD_MODELS` в `.env` |
 
