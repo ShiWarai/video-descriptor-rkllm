@@ -10,6 +10,10 @@
 #include <iostream>
 #include <mutex>
 
+#if defined(__GLIBC__)
+#include <malloc.h>
+#endif
+
 #include "core/frame_extractor.hpp"
 #include "core/media_util.hpp"
 #include "core/llm_runtime.hpp"
@@ -155,7 +159,12 @@ AnalyzeResult VideoContextPipeline::analyze(const AnalyzeRequest& request)
     AnalyzeResult result;
     const auto t_total = Clock::now();
     auto finish = [&]() -> AnalyzeResult& {
+        // Drop any leftover full-res frames and embeddings from this request.
+        vision_.clear();
         result.metrics["total_ms"] = elapsedMs(t_total);
+#if defined(__GLIBC__)
+        malloc_trim(0);
+#endif
         return result;
     };
 
@@ -267,7 +276,7 @@ AnalyzeResult VideoContextPipeline::analyze(const AnalyzeRequest& request)
         return got;
     });
 
-    vision_.clear();
+    bool embeddings_cleared = false;
     int encoded = 0;
     const auto t_encode = Clock::now();
     VisionProgressCallback vision_progress;
@@ -296,6 +305,11 @@ AnalyzeResult VideoContextPipeline::analyze(const AnalyzeRequest& request)
         });
 
         while (prep.model_ready.load() && !prep.pending_frames.empty()) {
+            if (!embeddings_cleared) {
+                // Wait until model thread finished unload/load before touching vision_.
+                vision_.clear();
+                embeddings_cleared = true;
+            }
             cv::Mat frame = std::move(prep.pending_frames.front());
             prep.pending_frames.pop_front();
             lock.unlock();
@@ -313,6 +327,7 @@ AnalyzeResult VideoContextPipeline::analyze(const AnalyzeRequest& request)
             break;
         }
         if (prep.model_load_finished.load() && !prep.model_ok) {
+            prep.pending_frames.clear();
             break;
         }
     }
@@ -401,6 +416,9 @@ AnalyzeResult VideoContextPipeline::analyze(const AnalyzeRequest& request)
         if (llm_.lastTruncatedByMaxTokens()) {
             result.metrics["truncated"] = 1;
         }
+        // Embeddings are no longer needed; release capacity until the next request.
+        vision_.clear();
+        llm_.clearKvCache();
     }
     return finish();
 }

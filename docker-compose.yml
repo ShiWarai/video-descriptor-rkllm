@@ -22,6 +22,8 @@ services:
       VLM_MODEL_URLS: "${VLM_MODEL_URLS:-}"
       WHISPER_RKNN_URL: "${WHISPER_RKNN_URL:-}"
       VLM_VERBOSE: "${VLM_VERBOSE:-1}"
+      # Limit glibc malloc arenas (httplib is multi-threaded; default arenas retain RSS).
+      MALLOC_ARENA_MAX: "2"
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-sf", "http://localhost:8080/ready"]

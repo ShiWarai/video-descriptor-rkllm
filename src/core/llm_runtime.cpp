@@ -102,6 +102,7 @@ bool LlmRuntime::load(const std::string& llm_model_path, int32_t max_new_tokens,
                       int32_t context_len, const std::string& lang, bool enable_thinking,
                       bool verbose)
 {
+    unload();
     verbose_ = verbose;
     enable_thinking_ = enable_thinking;
     output_lang_ = normalizeLang(lang);
@@ -295,6 +296,10 @@ std::string LlmRuntime::generateMultimodal(const std::string& prompt, const Visi
 
     const std::string raw = response_buffer_;
     const std::string stripped = stripThinkingTags(raw);
+    response_buffer_.clear();
+    response_buffer_.shrink_to_fit();
+    multimodal_prompt_.clear();
+    multimodal_prompt_.shrink_to_fit();
     if (verbose_) {
         std::cerr << "----- answer (API response, thinking stripped) -----\n"
                   << stripped << '\n'

@@ -133,6 +133,8 @@ Sampling для thinking задаётся отдельно: `thinking_temperatur
 
 **Метрики времени:** этапы `transcript_ms`, `frame_extract_ms`, `vision_encode_ms` и др. считаются **по отдельности** (wall каждого потока). В UI проценты от `wall_ms` могут суммироваться >100% — этапы частично идут **параллельно**, это нормально.
 
+**Память при долгой работе:** после каждого запроса embeddings и буферы ответа освобождаются (`shrink_to_fit` + `malloc_trim`). В Docker задано `MALLOC_ARENA_MAX=2`, чтобы glibc не плодил лишние malloc-арены в многопоточном httplib (это не reload модели, только поведение аллокатора).
+
 ---
 
 ## HTTP API

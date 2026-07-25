@@ -2,12 +2,27 @@
 #include <iostream>
 #include <string>
 
+#if defined(__GLIBC__)
+#include <malloc.h>
+#endif
+
 #include "api/config.hpp"
 #include "api/http_server.hpp"
 #include "pipeline/video_context_pipeline.hpp"
 #include "runtime/service_state.hpp"
 
 namespace {
+
+void configureAllocator()
+{
+#if defined(__GLIBC__)
+    // Fewer arenas → less retained RSS under multi-threaded httplib.
+    mallopt(M_ARENA_MAX, 2);
+    // Return free pages to the OS more eagerly after large RKLLM/vision allocations.
+    mallopt(M_TRIM_THRESHOLD, 64 * 1024);
+    mallopt(M_MMAP_THRESHOLD, 256 * 1024);
+#endif
+}
 
 void logStartup(const vlm::ServerConfig& cfg, const vlm::VideoContextPipeline& pipeline)
 {
@@ -40,6 +55,7 @@ void logStartup(const vlm::ServerConfig& cfg, const vlm::VideoContextPipeline& p
 
 int main(int argc, char** argv)
 {
+    configureAllocator();
     std::string config_path = "config.json";
     bool verbose_cli = false;
     for (int i = 1; i < argc; ++i) {

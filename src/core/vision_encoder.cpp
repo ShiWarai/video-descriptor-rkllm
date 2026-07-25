@@ -87,6 +87,7 @@ bool VisionEncoder::initFromPath(std::string_view model_path)
 
 bool VisionEncoder::load(const std::string& model_path, bool verbose)
 {
+    unload();
     verbose_ = verbose;
     return initFromPath(model_path);
 }
@@ -196,6 +197,8 @@ bool VisionEncoder::encodeFrames(const std::vector<cv::Mat>& bgr_frames,
 void VisionEncoder::clear()
 {
     embeddings_.clear();
+    embeddings_.shrink_to_fit();
+    working_img_.release();
     frame_count_ = 0;
 }
 
