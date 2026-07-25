@@ -46,7 +46,7 @@ docker compose up -d --build
 
 Логи: `docker compose logs -f api` (или `web`). При `VLM_VERBOSE=1` в `.env` API печатает prompt и stream в stderr.
 
-Продакшен (образы из GHCR, ~224 MB на сервис, linux/arm64):
+Продакшен (образы из GHCR): API **linux/arm64** (~224 MB), web **linux/amd64 + arm64** (~224 MB):
 
 ```bash
 cp .env.example .env   # если ещё не создан
@@ -101,7 +101,7 @@ flowchart LR
 | Тип | ASR | Примечание |
 |-----|-----|------------|
 | Видео (mp4, mkv, …) | да | транскрипт в prompt и в ответе |
-| **GIF** | **нет** | `transcript.status=skipped`; только кадры |
+| **GIF** | **нет** | `transcript.status=skipped`; кадры через software ffmpeg (без rkmpp) |
 
 ASR и vision encode идут параллельно. Для видео LLM **дожидается** ASR (если `status=ok` / `provided`) и вставляет речь **в начало prompt** (кадры + речь, затем задание). В ответе API транскрипт также возвращается отдельно.
 
@@ -402,7 +402,7 @@ models/               веса (volume mount)
 | **Deploy → notify-telegram** | после test / prerelease | уведомление в Telegram (см. ниже) |
 | **Publish** | успешный Deploy на `main` | `:main` и `:${sha}` (отдельный workflow) |
 
-Образы: **linux/arm64 only** (~224 MB API, ~224 MB web). Runtime API: минимальный OpenCV (core+imgproc) без Mesa/LLVM из apt.
+Образы в GHCR: API — **linux/arm64 only**; web — **linux/amd64 + arm64** (Flask UI без NPU). Runtime API: минимальный OpenCV (core+imgproc) без Mesa/LLVM из apt.
 
 ### Telegram
 

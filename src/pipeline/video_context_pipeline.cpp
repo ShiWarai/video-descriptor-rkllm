@@ -11,6 +11,7 @@
 #include <mutex>
 
 #include "core/frame_extractor.hpp"
+#include "core/media_util.hpp"
 #include "core/llm_runtime.hpp"
 #include "core/text_util.hpp"
 #include "core/vision_encoder.hpp"
@@ -24,15 +25,6 @@ using Clock = std::chrono::steady_clock;
 [[nodiscard]] double elapsedMs(Clock::time_point start)
 {
     return std::chrono::duration<double, std::milli>(Clock::now() - start).count();
-}
-
-[[nodiscard]] bool isGifPath(const std::filesystem::path& path)
-{
-    auto ext = path.extension().string();
-    for (char& c : ext) {
-        c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
-    }
-    return ext == ".gif";
 }
 
 }  // namespace
@@ -211,14 +203,14 @@ AnalyzeResult VideoContextPipeline::analyze(const AnalyzeRequest& request)
     } prep;
 
     if (config_.verbose) {
-        if (isGifPath(request.video_path)) {
+        if (isGifPath(request.video_path.string())) {
             std::cerr << "parallel prep: model load + frame extract (ASR skipped: GIF)\n";
         } else {
             std::cerr << "parallel prep: model load + frame extract + transcript\n";
         }
     }
 
-    const bool skip_asr = isGifPath(request.video_path);
+    const bool skip_asr = isGifPath(request.video_path.string());
     std::future<void> transcript_fut;
     if (skip_asr) {
         prep.transcript = TranscriptResult{.text = "", .status = "skipped"};
