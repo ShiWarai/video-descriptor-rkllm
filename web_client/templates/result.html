@@ -34,11 +34,22 @@
         <h2>Время расчёта</h2>
         {% set metrics = result.get('metrics') or {} %}
         {% if metrics %}
-          {% set total = metrics.get('wall_ms', metrics.get('total_ms')) %}
-          {% if total is not none %}
+          {% set wall = metrics.get('wall_ms') or metrics.get('total_ms') %}
+          {% if client_metrics and client_metrics.get('client_wall_ms') is not none %}
             <p class="metrics-total">
-              Итого: <strong>{{ '%.1f'|format(total) }} ms</strong>
-              ({{ '%.2f'|format(total / 1000) }} s)
+              Запрос из браузера:
+              <strong>{{ '%.1f'|format(client_metrics.client_wall_ms) }} ms</strong>
+              ({{ '%.2f'|format(client_metrics.client_wall_ms / 1000) }} s)
+              {% if client_metrics.get('client_upload_ms') is not none %}
+                · загрузка ≈ {{ '%.1f'|format(client_metrics.client_upload_ms) }} ms
+              {% endif %}
+            </p>
+          {% endif %}
+          {% if wall is not none %}
+            <p class="metrics-total">
+              API wall:
+              <strong>{{ '%.1f'|format(wall) }} ms</strong>
+              ({{ '%.2f'|format(wall / 1000) }} s)
               {% if metrics.get('generate_tokens') is not none and metrics.get('max_new_tokens') is not none %}
                 · {{ '%.0f'|format(metrics.get('generate_tokens')) }}/{{ '%.0f'|format(metrics.get('max_new_tokens')) }} токенов
               {% elif metrics.get('generate_tokens') is not none %}
@@ -54,33 +65,28 @@
               Это hard-stop RKLLM, не «краткость».
             </p>
           {% endif %}
+          <p class="muted metrics-note">
+            % считается от API wall. Подготовка картинок и ASR идут параллельно — детали ниже без %.
+          </p>
           <table class="metrics-table">
             <thead>
-              <tr><th>Этап</th><th>ms</th><th>%</th></tr>
+              <tr><th>Этап</th><th>ms</th><th>% wall</th></tr>
             </thead>
             <tbody>
-              {% set stage_order = [
+              {% set main_stages = [
                 ('queue_wait_ms', 'Ожидание в очереди'),
-                ('model_load_ms', 'Загрузка модели'),
-                ('transcript_ms', 'Транскрипт'),
-                ('audio_extract_ms', 'Extract аудио'),
-                ('whisper_ms', 'Whisper ASR'),
-                ('frame_extract_ms', 'Извлечение кадров'),
-                ('vision_encode_ms', 'Vision encode'),
+                ('image_prep_ms', 'Подготовка картинок (wall)'),
                 ('llm_generate_ms', 'LLM генерация'),
-                ('total_ms', 'Пайплайн (total)'),
-                ('wall_ms', 'Wall (с очередью)'),
               ] %}
-              {% set base = metrics.get('wall_ms') or metrics.get('total_ms') or 0 %}
-              {% for key, label in stage_order %}
+              {% for key, label in main_stages %}
                 {% if key in metrics %}
                   {% set val = metrics[key] %}
-                  <tr class="{% if key in ('total_ms', 'wall_ms') %}metrics-sum{% endif %}">
+                  <tr>
                     <td>{{ label }}</td>
                     <td>{{ '%.1f'|format(val) }}</td>
                     <td>
-                      {% if base and key not in ('total_ms', 'wall_ms') %}
-                        {{ '%.0f'|format(100.0 * val / base) }}%
+                      {% if wall %}
+                        {{ '%.0f'|format(100.0 * val / wall) }}%
                       {% else %}
                         —
                       {% endif %}
@@ -88,12 +94,64 @@
                   </tr>
                 {% endif %}
               {% endfor %}
+
+              {% set parallel_groups = [
+                ('Подготовка картинок (параллельно)', [
+                  ('model_load_ms', 'Загрузка модели'),
+                  ('frame_extract_ms', 'Извлечение кадров'),
+                  ('vision_encode_ms', 'Vision encode'),
+                ]),
+                ('ASR (параллельно с картинками)', [
+                  ('transcript_ms', 'Транскрипт'),
+                  ('audio_extract_ms', 'Extract аудио'),
+                  ('whisper_ms', 'Whisper ASR'),
+                ]),
+              ] %}
+              {% for group_title, stages in parallel_groups %}
+                {% set ns = namespace(has_rows=false) %}
+                {% for key, label in stages %}
+                  {% if key in metrics %}
+                    {% set ns.has_rows = true %}
+                  {% endif %}
+                {% endfor %}
+                {% if ns.has_rows %}
+                  <tr class="metrics-group">
+                    <td colspan="3">{{ group_title }}</td>
+                  </tr>
+                  {% for key, label in stages %}
+                    {% if key in metrics %}
+                      <tr class="metrics-sub">
+                        <td>{{ label }}</td>
+                        <td>{{ '%.1f'|format(metrics[key]) }}</td>
+                        <td class="muted">∥</td>
+                      </tr>
+                    {% endif %}
+                  {% endfor %}
+                {% endif %}
+              {% endfor %}
+
+              {% set totals = [
+                ('total_ms', 'Пайплайн (total)'),
+                ('wall_ms', 'Wall (с очередью)'),
+              ] %}
+              {% for key, label in totals %}
+                {% if key in metrics %}
+                  <tr class="metrics-sum">
+                    <td>{{ label }}</td>
+                    <td>{{ '%.1f'|format(metrics[key]) }}</td>
+                    <td>—</td>
+                  </tr>
+                {% endif %}
+              {% endfor %}
+
+              {% set known = [
+                'queue_wait_ms','image_prep_ms','llm_generate_ms',
+                'model_load_ms','frame_extract_ms','vision_encode_ms',
+                'transcript_ms','audio_extract_ms','whisper_ms',
+                'generate_tokens','max_new_tokens','truncated','total_ms','wall_ms'
+              ] %}
               {% for key, val in metrics.items() %}
-                {% if key not in [
-                  'queue_wait_ms','model_load_ms','transcript_ms','audio_extract_ms','whisper_ms','frame_extract_ms',
-                  'vision_encode_ms','llm_generate_ms','generate_tokens','max_new_tokens',
-                  'truncated','total_ms','wall_ms'
-                ] %}
+                {% if key not in known %}
                   <tr>
                     <td>{{ key }}</td>
                     <td>{{ '%.1f'|format(val) }}</td>

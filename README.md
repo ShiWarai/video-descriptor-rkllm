@@ -50,7 +50,7 @@ flowchart LR
 | Видео | да ([whisper-rknn](https://github.com/ShiWarai/whisper-rknn), `WHISPER_RKNN_URL`) | rkmpp |
 | GIF | `transcript.status=skipped` | software libav |
 
-LLM ждёт ASR (`ok`/`provided`), вставляет речь в начало prompt. Метрики этапов (`*_ms`) — wall каждого потока; в UI сумма % может быть >100% (параллельность).
+LLM ждёт ASR (`ok`/`provided`), вставляет речь в начало prompt. Метрики: `image_prep_ms` — wall подготовки картинок (модель + extract + vision, параллельно); `vision_encode_ms` — только RKNN после готовности модели; `frame_extract_ms` / `transcript_ms` — wall отдельных потоков (∥). В UI % только у последовательных этапов.
 
 **Thinking:** `enable_thinking` в config/запросе (без `/think` в prompt). В `description` только финальный ответ (`stripThinkingTags`). При thinking нужно **512–1024+** `max_tokens`; отдельный sampling: `thinking_*` в config. **Промпты:** `simple` | `detailed` (`include/core/vision_prompts.hpp`).
 
@@ -63,7 +63,7 @@ curl -s localhost:8080/ready     # readiness (503 пока грузятся мо
 
 `POST /v1/video/analyze` (multipart): `file`, `model` (`qwen3.5-{0.8b,2b,4b}-video`), `frames`, `frame_budget`, `max_tokens`, `lang` (`ru`|`eng`), `prompt_mode`, `enable_thinking`, `temperature`, `transcript` (override ASR).
 
-Ответ: `description`, `transcript` (`status`: `ok`|`stub`|`error`|`skipped`|`provided`), `metrics` (`wall_ms`, `vision_encode_ms`, …), `frames_used`.
+Ответ: `description`, `transcript` (`status`: `ok`|`stub`|`error`|`skipped`|`provided`), `metrics` (`wall_ms`, `image_prep_ms`, `vision_encode_ms`, …), `frames_used`.
 
 ```bash
 curl -s localhost:8080/v1/video/analyze \

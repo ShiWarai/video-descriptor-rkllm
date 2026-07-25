@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 import os
+import time
 from pathlib import Path
 
 import requests
@@ -112,6 +113,7 @@ def analyze():
     if temperature.strip():
         data["temperature"] = temperature.strip()
 
+    client_metrics: dict[str, float] = {}
     try:
         video.stream.seek(0, os.SEEK_END)
         size_mb = video.stream.tell() / (1024 * 1024)
@@ -121,12 +123,14 @@ def analyze():
         if size_mb > UPLOAD_MAX_MB:
             raise ValueError(f"Файл слишком большой ({size_mb:.1f} MB, лимит {UPLOAD_MAX_MB} MB)")
 
+        t_client = time.perf_counter()
         resp = requests.post(
             f"{API_BASE}/v1/video/analyze",
             files={"file": (video.filename, video.stream, video.mimetype or "application/octet-stream")},
             data=data,
             timeout=3600,
         )
+        client_metrics["client_wall_ms"] = (time.perf_counter() - t_client) * 1000.0
     except requests.RequestException as exc:
         return render_template(
             "result.html",
@@ -151,11 +155,17 @@ def analyze():
         )
 
     payload = resp.json()
+    api_wall = (payload.get("metrics") or {}).get("wall_ms")
+    if api_wall is not None and "client_wall_ms" in client_metrics:
+        client_metrics["client_upload_ms"] = max(
+            0.0, client_metrics["client_wall_ms"] - float(api_wall)
+        )
     return render_template(
         "result.html",
         ok=payload.get("error") in (None, ""),
         result=payload,
         result_json=json.dumps(payload, ensure_ascii=False, indent=2),
+        client_metrics=client_metrics,
         api_base=API_BASE,
     )
 

@@ -219,6 +219,8 @@ AnalyzeResult VideoContextPipeline::analyze(const AnalyzeRequest& request)
         }
     }
 
+    const auto t_prep = Clock::now();
+
     const bool skip_asr = isGifPath(request.video_path.string());
     std::future<void> transcript_fut;
     if (skip_asr) {
@@ -281,7 +283,6 @@ AnalyzeResult VideoContextPipeline::analyze(const AnalyzeRequest& request)
     });
 
     int encoded = 0;
-    const auto t_encode = Clock::now();
     VisionProgressCallback vision_progress;
     if (config_.verbose) {
         vision_progress = [&](int cur, int total) {
@@ -296,6 +297,8 @@ AnalyzeResult VideoContextPipeline::analyze(const AnalyzeRequest& request)
         std::unique_lock lock(prep.mu);
         prep.cv.wait(lock, [&] { return prep.model_load_finished.load(); });
     }
+
+    const auto t_encode = Clock::now();
 
     if (prep.model_ok) {
         vision_.clear();
@@ -314,6 +317,7 @@ AnalyzeResult VideoContextPipeline::analyze(const AnalyzeRequest& request)
     result.metrics["model_load_ms"] = prep.model_load_ms;
     result.metrics["frame_extract_ms"] = prep.extract_ms;
     result.metrics["vision_encode_ms"] = elapsedMs(t_encode);
+    result.metrics["image_prep_ms"] = elapsedMs(t_prep);
     result.model = loaded_model_id_;
     result.duration_sec = prep.video_info.duration_sec;
 

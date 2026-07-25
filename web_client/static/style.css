@@ -85,6 +85,27 @@ dd.busy, #st-status.busy { color: #ffb020; font-weight: 600; }
   font-size: 1.05rem;
 }
 
+.metrics-note {
+  margin: 0 0 0.75rem;
+  font-size: 0.85rem;
+}
+
+.metrics-table tr.metrics-group td {
+  padding-top: 0.75rem;
+  font-weight: 600;
+  color: var(--muted);
+  font-size: 0.85rem;
+  border-bottom: none;
+}
+
+.metrics-table tr.metrics-sub td:first-child {
+  padding-left: 1.25rem;
+}
+
+.metrics-table tr.metrics-sub td:last-child {
+  color: var(--muted);
+}
+
 .metrics-table {
   width: 100%;
   border-collapse: collapse;
