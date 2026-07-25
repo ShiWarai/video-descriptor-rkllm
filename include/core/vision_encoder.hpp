@@ -5,9 +5,9 @@
 #include <string>
 #include <vector>
 
-#include <opencv2/core.hpp>
-#include <opencv2/imgproc.hpp>
 #include <rkllm/rknn_api.h>
+
+#include "core/rgb_frame.hpp"
 
 namespace vlm {
 
@@ -40,11 +40,11 @@ public:
     [[nodiscard]] int computeFrameBudget(int context_len, int max_new_tokens,
                                          int prompt_reserve) const;
 
-    [[nodiscard]] bool encodeFrames(const std::vector<cv::Mat>& bgr_frames,
+    [[nodiscard]] bool encodeFrames(const std::vector<RgbFrame>& frames,
                                     VisionProgressCallback progress = nullptr);
 
-    /** Append one BGR frame to the embedding buffer (caller must clear() first). */
-    [[nodiscard]] bool appendFrame(const cv::Mat& bgr_frame);
+    /** Append one model-sized RGB frame (caller must clear() first). */
+    [[nodiscard]] bool appendFrame(const RgbFrame& frame);
 
     void clear();
     [[nodiscard]] std::size_t frameCount() const noexcept { return frame_count_; }
@@ -58,11 +58,10 @@ private:
     VisionModelInfo info_;
     std::vector<float> embeddings_;
     std::size_t frame_count_ = 0;
-    cv::Mat working_img_;
     bool verbose_ = false;
 
     [[nodiscard]] bool initFromPath(std::string_view model_path);
-    [[nodiscard]] int processOneImage(const cv::Mat& rgb_resized);
+    [[nodiscard]] int processOneImage(const RgbFrame& rgb);
     void dumpTensorAttr(const rknn_tensor_attr& attr) const;
 };
 

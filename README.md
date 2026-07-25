@@ -72,8 +72,7 @@ docker compose -f docker-compose.yml -f docker-compose.prerelease.yml up -d
 | OS | Ubuntu 22.04 / 24.04 arm64 |
 | NPU | RKNPU2 driver, устройства `/dev/mpp_service`, `/dev/rga`, `/dev/dri`, `/dev/dma_heap` |
 | Runtime | RKLLM 1.3.0+, RKNN (в `third_party/lib`) |
-| OpenCV | host: `libopencv-dev` (core+imgproc); Docker: минимальная сборка в образе (~без Mesa/LLVM) |
-| ffmpeg | vendored **ffmpeg-rockchip** (`third_party/ffmpeg-rockchip/`) |
+| ffmpeg | vendored **ffmpeg-rockchip** (`third_party/ffmpeg-rockchip/`) — decode/resize/RGB на MPP+RGA |
 | Модели | не в git — volume `./models` или `VLM_DOWNLOAD_MODELS` в `.env` |
 
 ---
@@ -236,7 +235,7 @@ curl -s http://localhost:8080/v1/chat/completions \
 
 ## CLI
 
-Локальная сборка (нужен `libopencv-dev` на хосте):
+Локальная сборка:
 
 ```bash
 mkdir -p build && cd build
@@ -354,7 +353,7 @@ MODELS_DIR=./models ./scripts/download_models.sh 0.8b
 На хосте (RK3588 / arm64):
 
 ```bash
-sudo apt-get install -y build-essential cmake libopencv-dev
+sudo apt-get install -y build-essential cmake
 mkdir -p build && cd build
 cmake ..
 make -j$(nproc)
@@ -363,7 +362,7 @@ ctest --output-on-failure
 
 Unit-тесты (без NPU/моделей): `test_config`, `test_frame_plan`, `test_model_registry`, `test_text_util`, `test_thinking_control`, `test_workdir` — конфиг, план кадров, промпты, strip thinking-тегов.
 
-Или unit-тесты в Docker (как в CI, без NPU/моделей; OpenCV собирается в builder-образе):
+Или unit-тесты в Docker (как в CI, без NPU/моделей):
 
 ```bash
 docker compose -f docker-compose.dev.yml build
@@ -406,7 +405,7 @@ models/               веса (volume mount)
 | **Deploy → notify-telegram** | после test / prerelease | уведомление в Telegram (см. ниже) |
 | **Publish** | успешный Deploy на `main` | `:main` и `:${sha}` (отдельный workflow) |
 
-Образы в GHCR: API — **linux/arm64 only**; web — **linux/amd64 + arm64** (Flask UI без NPU). Runtime API: минимальный OpenCV (core+imgproc) без Mesa/LLVM из apt.
+Образы в GHCR: API — **linux/arm64 only**; web — **linux/amd64 + arm64** (Flask UI без NPU).
 
 ### Telegram
 

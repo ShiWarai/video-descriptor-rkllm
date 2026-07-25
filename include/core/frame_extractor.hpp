@@ -5,8 +5,7 @@
 #include <string_view>
 #include <vector>
 
-#include <opencv2/core.hpp>
-#include <opencv2/imgproc.hpp>
+#include "core/rgb_frame.hpp"
 
 namespace vlm {
 
@@ -21,27 +20,36 @@ struct VideoInfo {
 [[nodiscard]] int planFrameCount(double duration_sec, double fps, int requested_frames);
 
 using FrameProgressCallback = std::function<void(int current, int total)>;
-using FrameReadyCallback = std::function<void(cv::Mat frame, int index, int total)>;
+using FrameReadyCallback = std::function<void(RgbFrame frame, int index, int total)>;
 
 class FrameExtractor {
 public:
+    /** Default Qwen3.5-VL vision input size (letterboxed RGB). */
+    static constexpr int kDefaultVisionSize = 448;
+
     explicit FrameExtractor(std::string ffmpeg_bin_path = "third_party/ffmpeg-rockchip/bin");
 
     [[nodiscard]] bool probe(std::string_view filename, VideoInfo& info) const;
 
-    [[nodiscard]] bool extractFrameAtTime(std::string_view filename, double time_sec, int width,
-                                          int height, cv::Mat& out_bgr) const;
+    /**
+     * Decode one frame at time_sec into model-ready RGB (letterboxed to target_w x target_h).
+     * Video: rkmpp decode + scale_rkrga resize/convert, software pad for letterbox.
+     * GIF: software decode/scale/pad (rkmpp cannot read animated GIF).
+     */
+    [[nodiscard]] bool extractFrameAtTime(std::string_view filename, double time_sec,
+                                          int target_w, int target_h, RgbFrame& out_rgb) const;
 
-    /** Sample up to `requested_frames` evenly across the video (or fewer if clip is shorter). */
-    [[nodiscard]] std::vector<cv::Mat> extractFrames(std::string_view filename, int requested_frames,
-                                                     FrameProgressCallback progress = nullptr,
-                                                     VideoInfo* out_info = nullptr) const;
+    /** Sample up to `requested_frames` evenly; each frame is model-ready RGB. */
+    [[nodiscard]] std::vector<RgbFrame> extractFrames(
+        std::string_view filename, int requested_frames,
+        int target_w = kDefaultVisionSize, int target_h = kDefaultVisionSize,
+        FrameProgressCallback progress = nullptr, VideoInfo* out_info = nullptr) const;
 
     /** Same as extractFrames but invokes `on_frame` as each frame is decoded. */
-    [[nodiscard]] int extractFramesStreaming(std::string_view filename, int requested_frames,
-                                             FrameReadyCallback on_frame,
-                                             FrameProgressCallback progress = nullptr,
-                                             VideoInfo* out_info = nullptr) const;
+    [[nodiscard]] int extractFramesStreaming(
+        std::string_view filename, int requested_frames, FrameReadyCallback on_frame,
+        int target_w = kDefaultVisionSize, int target_h = kDefaultVisionSize,
+        FrameProgressCallback progress = nullptr, VideoInfo* out_info = nullptr) const;
 
 private:
     std::string ffmpeg_bin_path_;

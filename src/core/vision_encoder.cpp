@@ -4,8 +4,6 @@
 #include <cstring>
 #include <iostream>
 
-#include "core/image_preprocess.hpp"
-
 namespace vlm {
 
 VisionEncoder::VisionEncoder() = default;
@@ -104,7 +102,7 @@ int VisionEncoder::computeFrameBudget(int context_len, int max_new_tokens, int p
     return std::max(1, available / info_.image_tokens);
 }
 
-int VisionEncoder::processOneImage(const cv::Mat& rgb_resized)
+int VisionEncoder::processOneImage(const RgbFrame& rgb)
 {
     rknn_input inputs[1]{};
     std::vector<rknn_output> outputs(io_num_.n_output);
@@ -112,8 +110,8 @@ int VisionEncoder::processOneImage(const cv::Mat& rgb_resized)
     inputs[0].index = 0;
     inputs[0].type = RKNN_TENSOR_UINT8;
     inputs[0].fmt = RKNN_TENSOR_NHWC;
-    inputs[0].size = info_.width * info_.height * info_.channels;
-    inputs[0].buf = const_cast<void*>(static_cast<const void*>(rgb_resized.data));
+    inputs[0].size = static_cast<uint32_t>(rgb.byteSize());
+    inputs[0].buf = const_cast<void*>(static_cast<const void*>(rgb.data()));
 
     int ret = rknn_inputs_set(ctx_, 1, inputs);
     if (ret < 0) {
@@ -160,31 +158,28 @@ int VisionEncoder::processOneImage(const cv::Mat& rgb_resized)
     return 0;
 }
 
-bool VisionEncoder::appendFrame(const cv::Mat& bgr_frame)
+bool VisionEncoder::appendFrame(const RgbFrame& frame)
 {
-    if (!loaded() || bgr_frame.empty()) {
+    if (!loaded() || frame.empty() || !frame.matches(info_.width, info_.height)) {
         return false;
     }
-    cv::Mat img = bgr_frame.clone();
-    cv::cvtColor(img, img, cv::COLOR_BGR2RGB);
-    working_img_ = ImagePreprocess::prepare(img, info_.width, info_.height);
-    if (processOneImage(working_img_) != 0) {
+    if (processOneImage(frame) != 0) {
         return false;
     }
     ++frame_count_;
     return true;
 }
 
-bool VisionEncoder::encodeFrames(const std::vector<cv::Mat>& bgr_frames,
+bool VisionEncoder::encodeFrames(const std::vector<RgbFrame>& frames,
                                  VisionProgressCallback progress)
 {
     clear();
-    const int total = static_cast<int>(bgr_frames.size());
+    const int total = static_cast<int>(frames.size());
     for (int i = 0; i < total; ++i) {
         if (progress) {
             progress(i, total);
         }
-        if (!appendFrame(bgr_frames[static_cast<std::size_t>(i)])) {
+        if (!appendFrame(frames[static_cast<std::size_t>(i)])) {
             std::cerr << "Vision encode failed for frame " << i << '\n';
         }
     }
@@ -198,7 +193,6 @@ void VisionEncoder::clear()
 {
     embeddings_.clear();
     embeddings_.shrink_to_fit();
-    working_img_.release();
     frame_count_ = 0;
 }
 

@@ -92,10 +92,22 @@ bool FrameExtractor::probe(std::string_view filename, VideoInfo& info) const
     return info.width > 0 && info.height > 0 && info.fps > 0 && info.duration_sec > 0;
 }
 
-bool FrameExtractor::extractFrameAtTime(std::string_view filename, double time_sec, int width,
-                                        int height, cv::Mat& out_bgr) const
+bool FrameExtractor::extractFrameAtTime(std::string_view filename, double time_sec, int target_w,
+                                        int target_h, RgbFrame& out_rgb) const
 {
+    if (target_w <= 0 || target_h <= 0) {
+        return false;
+    }
+
     const std::string path(filename);
+    const std::string tw = std::to_string(target_w);
+    const std::string th = std::to_string(target_h);
+    // Letterbox to model size (scale + pad), RGB for RKNN.
+    // Gray pad 0x7F7F7F matches letterbox background used by Qwen vision models.
+    const std::string letterbox =
+        "scale=" + tw + ":" + th + ":force_original_aspect_ratio=decrease,"
+        "pad=" + tw + ":" + th + ":(ow-iw)/2:(oh-ih)/2:color=0x7F7F7F";
+
     std::string cmd;
     if (isGifPath(filename)) {
         // GIF is decoded in software — rkmpp/rkrga cannot read animated GIF.
@@ -103,18 +115,22 @@ bool FrameExtractor::extractFrameAtTime(std::string_view filename, double time_s
               "-ss " + std::to_string(time_sec) + " "
               "-i \"" + path + "\" "
               "-an -sn -frames:v 1 "
-              "-vf scale=" + std::to_string(width) + ":" + std::to_string(height) +
-              ":force_original_aspect_ratio=disable "
-              "-f rawvideo -pix_fmt bgr24 pipe:1 2>/dev/null";
+              "-vf '" + letterbox + "' "
+              "-f rawvideo -pix_fmt rgb24 pipe:1 2>/dev/null";
     } else {
+        // Decode + resize/convert on RGA; pad after hwdownload (cheap at model resolution).
+        const std::string hw_vf =
+            "scale_rkrga=w=" + tw + ":h=" + th +
+            ":format=rgb24:force_original_aspect_ratio=decrease,"
+            "hwdownload,format=rgb24,"
+            "pad=" + tw + ":" + th + ":(ow-iw)/2:(oh-ih)/2:color=0x7F7F7F";
         cmd = ffmpegPath("ffmpeg") + " -hide_banner -loglevel error "
               "-ss " + std::to_string(time_sec) + " "
               "-hwaccel rkmpp -hwaccel_output_format drm_prime "
               "-i \"" + path + "\" "
               "-an -sn -frames:v 1 "
-              "-vf scale_rkrga=w=" + std::to_string(width) + ":h=" + std::to_string(height) +
-              ":format=bgr24:force_original_aspect_ratio=disable,hwdownload,format=bgr24 "
-              "-f rawvideo -pix_fmt bgr24 pipe:1 2>/dev/null";
+              "-vf '" + hw_vf + "' "
+              "-f rawvideo -pix_fmt rgb24 pipe:1 2>/dev/null";
     }
 
     const std::unique_ptr<FILE, decltype(&pclose)> pipe(popen(cmd.c_str(), "r"), pclose);
@@ -122,7 +138,8 @@ bool FrameExtractor::extractFrameAtTime(std::string_view filename, double time_s
         return false;
     }
 
-    const auto frame_bytes = static_cast<std::size_t>(width) * static_cast<std::size_t>(height) * 3;
+    const auto frame_bytes =
+        static_cast<std::size_t>(target_w) * static_cast<std::size_t>(target_h) * 3;
     std::vector<std::uint8_t> buffer(frame_bytes);
     std::size_t read_total = 0;
     while (read_total < frame_bytes) {
@@ -137,26 +154,27 @@ bool FrameExtractor::extractFrameAtTime(std::string_view filename, double time_s
         return false;
     }
 
-    out_bgr = cv::Mat(height, width, CV_8UC3);
-    std::memcpy(out_bgr.data, buffer.data(), frame_bytes);
+    out_rgb = RgbFrame::fromRaw(target_w, target_h, std::move(buffer));
     return true;
 }
 
-std::vector<cv::Mat> FrameExtractor::extractFrames(std::string_view filename, int requested_frames,
+std::vector<RgbFrame> FrameExtractor::extractFrames(std::string_view filename, int requested_frames,
+                                                   int target_w, int target_h,
                                                    FrameProgressCallback progress,
                                                    VideoInfo* out_info) const
 {
-    std::vector<cv::Mat> frames;
+    std::vector<RgbFrame> frames;
     const int got = extractFramesStreaming(
         filename, requested_frames,
-        [&](cv::Mat frame, int /*index*/, int /*total*/) { frames.push_back(std::move(frame)); },
-        progress, out_info);
+        [&](RgbFrame frame, int /*index*/, int /*total*/) { frames.push_back(std::move(frame)); },
+        target_w, target_h, progress, out_info);
     (void)got;
     return frames;
 }
 
 int FrameExtractor::extractFramesStreaming(std::string_view filename, int requested_frames,
-                                           FrameReadyCallback on_frame, FrameProgressCallback progress,
+                                           FrameReadyCallback on_frame, int target_w, int target_h,
+                                           FrameProgressCallback progress,
                                            VideoInfo* out_info) const
 {
     if (!on_frame || !std::filesystem::exists(filename)) {
@@ -186,8 +204,8 @@ int FrameExtractor::extractFramesStreaming(std::string_view filename, int reques
         }
         const int frame_idx = static_cast<int>(i * step);
         const double time_sec = frame_idx / info.fps;
-        cv::Mat frame;
-        if (!extractFrameAtTime(filename, time_sec, info.width, info.height, frame)) {
+        RgbFrame frame;
+        if (!extractFrameAtTime(filename, time_sec, target_w, target_h, frame)) {
             continue;
         }
         on_frame(std::move(frame), i, target_count);

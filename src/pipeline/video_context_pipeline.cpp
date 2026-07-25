@@ -198,7 +198,7 @@ AnalyzeResult VideoContextPipeline::analyze(const AnalyzeRequest& request)
     struct PrepState {
         std::mutex mu;
         std::condition_variable cv;
-        std::deque<cv::Mat> pending_frames;
+        std::deque<RgbFrame> pending_frames;
         bool extract_done = false;
         int extract_count = 0;
         VideoInfo video_info{};
@@ -257,14 +257,17 @@ AnalyzeResult VideoContextPipeline::analyze(const AnalyzeRequest& request)
     auto extract_fut = std::async(std::launch::async, [&] {
         const auto t0 = Clock::now();
         VideoInfo info;
+        // Model-sized letterbox in ffmpeg/RGA (Qwen3.5-VL = 448). Do not touch vision_
+        // here — model load runs in parallel.
         const int got = extractor_.extractFramesStreaming(
             request.video_path.string(), effective,
-            [&](cv::Mat frame, int /*index*/, int /*total*/) {
+            [&](RgbFrame frame, int /*index*/, int /*total*/) {
                 std::lock_guard lock(prep.mu);
                 prep.pending_frames.push_back(std::move(frame));
                 ++prep.extract_count;
                 prep.cv.notify_one();
             },
+            FrameExtractor::kDefaultVisionSize, FrameExtractor::kDefaultVisionSize,
             extract_progress, &info);
         {
             std::lock_guard lock(prep.mu);
@@ -310,7 +313,7 @@ AnalyzeResult VideoContextPipeline::analyze(const AnalyzeRequest& request)
                 vision_.clear();
                 embeddings_cleared = true;
             }
-            cv::Mat frame = std::move(prep.pending_frames.front());
+            RgbFrame frame = std::move(prep.pending_frames.front());
             prep.pending_frames.pop_front();
             lock.unlock();
             if (vision_.appendFrame(frame)) {
