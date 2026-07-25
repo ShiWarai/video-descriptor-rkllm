@@ -93,16 +93,16 @@ flowchart LR
 
 Сервис: видео → **параллельно** кадры (ffmpeg-rockchip) + аудио → ASR ([whisper-rknn](https://github.com/ShiWarai/whisper-rknn)) + vision encoder (RKNN) → multimodal LLM (RKLLM) → **description** + **transcript**.
 
-ASR и vision encode идут параллельно. Перед генерацией описания LLM **дожидается** ASR (если `status=ok` / `provided`) и **подмешивает транскрипт в prompt** как контекст речи. В ответе API транскрипт также возвращается отдельно.
+ASR и vision encode идут параллельно. Перед генерацией описания LLM **дожидается** ASR (если `status=ok` / `provided`) и вставляет речь **в начало prompt** (кадры + речь, затем задание). В ответе API транскрипт также возвращается отдельно.
 
 **Режимы промпта** (`prompt_mode`):
 
-| Режим | Задание |
-|-------|---------|
-| `simple` | «Опиши кратко и по делу видео/gif.» |
-| `detailed` (по умолчанию в UI) | «Опиши это видео по кадрам…» + секции `## О чём` / `## Действия` / `## Текст на экране` / `## Жанр` |
+| Режим | Структура |
+|-------|-----------|
+| `simple` | «Тебе даны кадры… [с речью…]» → «Опиши кратко и по делу видео.» |
+| `detailed` (по умолчанию в UI) | то же вступление → «Опиши это видео…» + пункты 1–3 (о чём / текст на экране / жанр) |
 
-Промпт собирается в `LlmRuntime::buildUserVisionPrompt` (`src/core/llm_runtime.cpp`).
+Тексты промптов — в `include/core/vision_prompts.hpp`; сборка через `LlmRuntime::buildUserVisionPrompt`.
 
 ---
 

@@ -49,7 +49,7 @@ public:
                                      float presence_penalty) noexcept;
 
     /** User multimodal prompt. prompt_mode: "simple" | "detailed".
-     *  Optional ASR transcript is appended before the /think switch. */
+     *  Texts live in core/vision_prompts.hpp; optional ASR goes with frames, before the task. */
     [[nodiscard]] static std::string buildUserVisionPrompt(
         std::string_view lang, bool enable_thinking, std::string_view prompt_mode = "detailed",
         std::string_view transcript = {});

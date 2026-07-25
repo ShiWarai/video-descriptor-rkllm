@@ -39,6 +39,11 @@
             <p class="metrics-total">
               Итого: <strong>{{ '%.1f'|format(total) }} ms</strong>
               ({{ '%.2f'|format(total / 1000) }} s)
+              {% if metrics.get('generate_tokens') is not none and metrics.get('max_new_tokens') is not none %}
+                · {{ '%.0f'|format(metrics.get('generate_tokens')) }}/{{ '%.0f'|format(metrics.get('max_new_tokens')) }} токенов
+              {% elif metrics.get('generate_tokens') is not none %}
+                · {{ '%.0f'|format(metrics.get('generate_tokens')) }} токенов
+              {% endif %}
             </p>
           {% endif %}
           {% if metrics.get('truncated') %}
@@ -63,8 +68,6 @@
                 ('frame_extract_ms', 'Извлечение кадров'),
                 ('vision_encode_ms', 'Vision encode'),
                 ('llm_generate_ms', 'LLM генерация'),
-                ('generate_tokens', 'Сгенерировано токенов'),
-                ('max_new_tokens', 'Лимит max_new_tokens'),
                 ('total_ms', 'Пайплайн (total)'),
                 ('wall_ms', 'Wall (с очередью)'),
               ] %}
@@ -74,15 +77,9 @@
                   {% set val = metrics[key] %}
                   <tr class="{% if key in ('total_ms', 'wall_ms') %}metrics-sum{% endif %}">
                     <td>{{ label }}</td>
+                    <td>{{ '%.1f'|format(val) }}</td>
                     <td>
-                      {% if key in ('generate_tokens', 'max_new_tokens', 'truncated') %}
-                        {{ '%.0f'|format(val) }}
-                      {% else %}
-                        {{ '%.1f'|format(val) }}
-                      {% endif %}
-                    </td>
-                    <td>
-                      {% if base and key not in ('total_ms', 'wall_ms', 'generate_tokens', 'max_new_tokens', 'truncated') %}
+                      {% if base and key not in ('total_ms', 'wall_ms') %}
                         {{ '%.0f'|format(100.0 * val / base) }}%
                       {% else %}
                         —

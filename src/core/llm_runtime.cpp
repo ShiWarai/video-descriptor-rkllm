@@ -6,6 +6,7 @@
 #include <string_view>
 
 #include "core/text_util.hpp"
+#include "core/vision_prompts.hpp"
 
 namespace vlm {
 
@@ -90,35 +91,8 @@ std::string LlmRuntime::buildUserVisionPrompt(std::string_view lang, bool enable
                                               std::string_view prompt_mode,
                                               std::string_view transcript)
 {
-    const std::string normalized = normalizeLang(lang);
-    const bool simple = (prompt_mode == "simple");
-    // Do NOT call rkllm_set_chat_template: it disables input.enable_thinking (RKLLM warning).
-    std::string prompt = "<image>\n";
-    if (simple) {
-        prompt += (normalized == "eng") ? "Give a brief, to-the-point description of the video/GIF."
-                                        : "Опиши кратко и по делу видео/gif.";
-    } else if (normalized == "eng") {
-        prompt +=
-            "Describe this video from the frames in time order. Factual only, no invention. "
-            "Answer in English:\n"
-            "## Summary\nWhat the clip is about.\n"
-            "## Actions\nWhat changes across frames, in order.\n"
-            "## On-screen text\nQuote or none.\n"
-            "## Genre\nOne short label.";
-    } else {
-        prompt +=
-            "Опиши это видео по кадрам по порядку. Только факты, без выдумок. Ответ на русском:\n"
-            "## О чём\nСуть ролика.\n"
-            "## Действия\nЧто меняется между кадрами, по порядку.\n"
-            "## Текст на экране\nЦитата или «нет».\n"
-            "## Жанр\nОдин ярлык.";
-    }
-    if (!transcript.empty()) {
-        prompt += (normalized == "eng") ? "\n\nSpeech in the video:\n" : "\n\nРечь на видео:\n";
-        prompt += transcript;
-    }
-    prompt += enable_thinking ? " /think" : " /no_think";
-    return prompt;
+    return prompts::buildUserVisionPrompt(normalizeLang(lang), enable_thinking, prompt_mode,
+                                          transcript);
 }
 
 bool LlmRuntime::load(const std::string& llm_model_path, int32_t max_new_tokens,
