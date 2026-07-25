@@ -5,8 +5,9 @@
 
 namespace vlm::prompts {
 
-// Frames + speech first, then the task — otherwise the model mixes them up.
-// Do NOT call rkllm_set_chat_template: it disables input.enable_thinking (RKLLM warning).
+// Frames (+ optional speech) first, then the task — otherwise the model mixes them up.
+// Thinking mode is controlled by RKLLMInput.enable_thinking, not /think|/no_think in the
+// user prompt (those soft switches are echoed by the model and are redundant here).
 
 inline constexpr std::string_view kFramesIntroRu = "Тебе даны кадры из видео <image>";
 inline constexpr std::string_view kFramesIntroEng = "You are given frames from a video <image>";
@@ -33,13 +34,9 @@ inline constexpr std::string_view kTaskDetailedEng =
     "Only captions/labels visible in the video frames, not speech.\n"
     "3) Likely genre";
 
-inline constexpr std::string_view kThinkOn = "\n/think";
-inline constexpr std::string_view kThinkOff = "\n/no_think";
-
 /** Build multimodal user prompt. prompt_mode: "simple" | "detailed".
  *  Optional ASR transcript is inserted with the frames, before the task. */
 [[nodiscard]] inline std::string buildUserVisionPrompt(std::string_view lang_normalized,
-                                                       bool enable_thinking,
                                                        std::string_view prompt_mode,
                                                        std::string_view transcript = {})
 {
@@ -61,7 +58,6 @@ inline constexpr std::string_view kThinkOff = "\n/no_think";
     } else {
         prompt += eng ? kTaskDetailedEng : kTaskDetailedRu;
     }
-    prompt += enable_thinking ? kThinkOn : kThinkOff;
     return prompt;
 }
 

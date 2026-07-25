@@ -29,8 +29,8 @@
       <h2>Анализ видео</h2>
       <form action="{{ url_for('analyze') }}" method="post" enctype="multipart/form-data">
         <label>
-          Видео
-          <input type="file" name="video" accept="video/*" required>
+          Видео / GIF
+          <input type="file" name="video" accept="video/*,image/gif,.gif" required>
         </label>
 
         <div class="row">

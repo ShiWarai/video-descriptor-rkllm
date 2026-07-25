@@ -9,7 +9,7 @@ namespace vlm {
 
 struct TranscriptResult {
     std::string text;
-    std::string status;  // "provided" | "stub" | "ok" | "error"
+    std::string status;  // "provided" | "stub" | "ok" | "error" | "skipped" (gif / no audio)
     std::optional<std::string> language;
     double audio_extract_ms = 0;
     double whisper_ms = 0;

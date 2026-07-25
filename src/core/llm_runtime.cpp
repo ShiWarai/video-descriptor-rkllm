@@ -14,6 +14,11 @@ namespace {
 
 constexpr std::string_view kThinkingOpenTag = "<think>\n";
 
+bool startsWithThinkingTag(std::string_view text)
+{
+    return text.starts_with("<think>") || text.starts_with("\x3cthinking\x3e");
+}
+
 }  // namespace
 
 LlmRuntime::LlmRuntime()
@@ -87,12 +92,10 @@ bool LlmRuntime::setOutputLang(std::string_view lang)
     return true;
 }
 
-std::string LlmRuntime::buildUserVisionPrompt(std::string_view lang, bool enable_thinking,
-                                              std::string_view prompt_mode,
+std::string LlmRuntime::buildUserVisionPrompt(std::string_view lang, std::string_view prompt_mode,
                                               std::string_view transcript)
 {
-    return prompts::buildUserVisionPrompt(normalizeLang(lang), enable_thinking, prompt_mode,
-                                          transcript);
+    return prompts::buildUserVisionPrompt(normalizeLang(lang), prompt_mode, transcript);
 }
 
 bool LlmRuntime::load(const std::string& llm_model_path, int32_t max_new_tokens,
@@ -166,7 +169,7 @@ int LlmRuntime::instanceCallback(RKLLMResult* result, LLMCallState state)
     } else if (state == RKLLM_RUN_NORMAL && result && result->text) {
         if (enable_thinking_ && !thinking_open_printed_) {
             thinking_open_printed_ = true;
-            if (!std::string_view(result->text).starts_with("<think>")) {
+            if (!startsWithThinkingTag(result->text)) {
                 response_buffer_ += std::string(kThinkingOpenTag);
                 if (verbose_) {
                     if (!stream_started_) {

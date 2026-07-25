@@ -42,7 +42,7 @@ docker compose up -d --build
 ```
 
 - **API:** http://localhost:8080 (`/health`, `/ready`, `/v1/models`, `/v1/video/analyze`)
-- **Web UI:** http://localhost:5000 — загрузка видео, описание, транскрипт, метрики времени (в «Итого» также токены/лимит)
+- **Web UI:** http://localhost:5000 — загрузка **видео или GIF**, описание, транскрипт, метрики (в строке «Итого» — токены/лимит)
 
 Логи: `docker compose logs -f api` (или `web`). При `VLM_VERBOSE=1` в `.env` API печатает prompt и stream в stderr.
 
@@ -94,16 +94,38 @@ flowchart LR
   API --> Web[web_client Flask]
 ```
 
-Сервис: видео → **параллельно** кадры (ffmpeg-rockchip) + аудио → ASR ([whisper-rknn](https://github.com/ShiWarai/whisper-rknn)) + vision encoder (RKNN) → multimodal LLM (RKLLM) → **description** + **transcript**.
+Сервис: видео/GIF → **параллельно** кадры (ffmpeg-rockchip) + (для видео) аудио → ASR ([whisper-rknn](https://github.com/ShiWarai/whisper-rknn)) + vision encoder (RKNN) → multimodal LLM (RKLLM) → **description** + **transcript**.
 
-ASR и vision encode идут параллельно. Перед генерацией описания LLM **дожидается** ASR (если `status=ok` / `provided`) и вставляет речь **в начало prompt** (кадры + речь, затем задание). В ответе API транскрипт также возвращается отдельно.
+### Входные форматы
+
+| Тип | ASR | Примечание |
+|-----|-----|------------|
+| Видео (mp4, mkv, …) | да | транскрипт в prompt и в ответе |
+| **GIF** | **нет** | `transcript.status=skipped`; только кадры |
+
+ASR и vision encode идут параллельно. Для видео LLM **дожидается** ASR (если `status=ok` / `provided`) и вставляет речь **в начало prompt** (кадры + речь, затем задание). В ответе API транскрипт также возвращается отдельно.
+
+### Thinking mode
+
+Режим задаётся флагом RKLLM `RKLLMInput.enable_thinking` (`pipeline.enable_thinking` в config, `enable_thinking` в запросе / Web UI). Суффиксы `/think` и `/no_think` **не** добавляются в user prompt.
+
+**Постобработка ответа** (`stripThinkingTags` в `src/core/text_util.cpp`):
+
+| Что убирается | Как |
+|---------------|-----|
+| Блок reasoning | целиком, с содержимым: теги `<think>` или `<thinking>` |
+| Soft-switches | `/think`, `/no_think` (если модель эхоит) |
+
+В `description` попадает **только финальный ответ**. При `enable_thinking=true` модель может потратить весь `max_tokens` на reasoning — тогда описание будет пустым. Рекомендуется **512–1024+** токенов для thinking (в Web UI поле «Max tokens»).
+
+Sampling для thinking задаётся отдельно: `thinking_temperature`, `thinking_top_p`, `thinking_presence_penalty` в `config.json`.
 
 **Режимы промпта** (`prompt_mode`):
 
 | Режим | Структура |
 |-------|-----------|
 | `simple` | «Тебе даны кадры… [с речью…]» → «Опиши кратко и по делу видео.» |
-| `detailed` (по умолчанию в UI) | то же вступление → «Опиши это видео…» + пункты 1–3 (о чём / текст на экране / жанр) |
+| `detailed` (по умолчанию в UI) | то же вступление → «Опиши это видео…» + пункты 1–3 (о чём / **текст в кадрах** / жанр) |
 
 Тексты промптов — в `include/core/vision_prompts.hpp`; сборка через `LlmRuntime::buildUserVisionPrompt`.
 
@@ -153,16 +175,18 @@ startupProbe:
 
 | Поле | По умолчанию | Описание |
 |------|--------------|----------|
-| `file` | — | Видеофайл (обязательно) |
+| `file` | — | Видео или GIF (обязательно) |
 | `model` | из `config.json` | `qwen3.5-0.8b-video` / `qwen3.5-2b-video` |
 | `frames` | 8 | Сколько кадров запросить |
 | `frame_budget` | из config | Потолок кадров с учётом контекста |
 | `max_tokens` | из config | Лимит генерации LLM |
 | `lang` | `ru` | `ru` или `eng` (язык ответа) |
 | `prompt_mode` | `detailed` | `simple` \| `detailed` |
-| `enable_thinking` | из config | `true` / `false` / `1` / `0` |
+| `enable_thinking` | из config | `true` / `false` / `1` / `0` — при `true` увеличьте `max_tokens` |
 | `temperature` | из config | override sampling |
 | `transcript` | — | готовый текст ASR (пропустить whisper) |
+
+`transcript.status` в ответе: `ok` | `stub` | `error` | `skipped` (GIF) | `provided` (override).
 
 ```bash
 curl -s http://localhost:8080/v1/video/analyze \
@@ -178,8 +202,8 @@ curl -s http://localhost:8080/v1/video/analyze \
 
 | Поле | Описание |
 |------|----------|
-| `description` | Текст описания от VLM |
-| `transcript` | `{ "text", "status" }` — ASR или stub |
+| `description` | Текст описания от VLM (без блоков thinking) |
+| `transcript` | `{ "text", "status" }` — ASR, stub, `skipped` (GIF) или override |
 | `metrics` | `wall_ms`, `transcript_ms`, `vision_encode_ms`, `llm_generate_ms`, `generate_tokens`, … |
 | `frames_used`, `frame_budget`, `duration_sec` | метаданные пайплайна |
 
@@ -279,9 +303,13 @@ Transcribe: `POST {WHISPER_RKNN_URL}/transcribe` (multipart, поле `file`).
 | `default_model` | модель по умолчанию |
 | `preload_model` | загрузить на старте (опционально) |
 | `pipeline.frame_budget` | потолок кадров (28 по умолчанию) |
+| `pipeline.default_max_tokens` | лимит генерации LLM (1024 по умолчанию) |
 | `pipeline.ffmpeg_bin_path` | `third_party/ffmpeg-rockchip/bin` |
 | `pipeline.whisper_url` | URL whisper-rknn (пусто = stub; в Docker обычно через `.env`) |
 | `pipeline.enable_thinking` | thinking mode по умолчанию (`false`) |
+| `pipeline.thinking_temperature` | temperature при thinking (`0.6`) |
+| `pipeline.thinking_top_p` | top_p при thinking (`0.95`) |
+| `pipeline.thinking_presence_penalty` | presence penalty при thinking (`0.0`) |
 | `pipeline.verbose` | логи пайплайна (в Docker переопределяется `VLM_VERBOSE`) |
 
 ---
@@ -329,6 +357,8 @@ make -j$(nproc)
 ctest --output-on-failure
 ```
 
+Unit-тесты (без NPU/моделей): `test_config`, `test_frame_plan`, `test_model_registry`, `test_text_util`, `test_thinking_control`, `test_workdir` — конфиг, план кадров, промпты, strip thinking-тегов.
+
 Или unit-тесты в Docker (как в CI, без NPU/моделей; OpenCV собирается в builder-образе):
 
 ```bash
@@ -348,7 +378,9 @@ LD_LIBRARY_PATH=./third_party/lib:./third_party/ffmpeg-rockchip/lib \
 ```
 include/
   core/vision_prompts.hpp   тексты промптов (ru/eng, simple/detailed)
+  core/text_util.hpp        stripThinkingTags, extractThinkingBlocks
 src/                  реализация C++
+tests/                unit-тесты (ctest)
 third_party/
   lib/                librkllmrt.so, librknnrt.so
   ffmpeg-rockchip/    vendored ffmpeg + Rockchip libs

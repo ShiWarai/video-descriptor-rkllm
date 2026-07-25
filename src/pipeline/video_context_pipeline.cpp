@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <atomic>
+#include <cctype>
 #include <chrono>
 #include <condition_variable>
 #include <deque>
@@ -23,6 +24,15 @@ using Clock = std::chrono::steady_clock;
 [[nodiscard]] double elapsedMs(Clock::time_point start)
 {
     return std::chrono::duration<double, std::milli>(Clock::now() - start).count();
+}
+
+[[nodiscard]] bool isGifPath(const std::filesystem::path& path)
+{
+    auto ext = path.extension().string();
+    for (char& c : ext) {
+        c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    }
+    return ext == ".gif";
 }
 
 }  // namespace
@@ -201,15 +211,26 @@ AnalyzeResult VideoContextPipeline::analyze(const AnalyzeRequest& request)
     } prep;
 
     if (config_.verbose) {
-        std::cerr << "parallel prep: model load + frame extract + transcript\n";
+        if (isGifPath(request.video_path)) {
+            std::cerr << "parallel prep: model load + frame extract (ASR skipped: GIF)\n";
+        } else {
+            std::cerr << "parallel prep: model load + frame extract + transcript\n";
+        }
     }
 
-    auto transcript_fut = std::async(std::launch::async, [&] {
-        const auto t0 = Clock::now();
-        prep.transcript =
-            transcriber_->transcribe(request.video_path, request.transcript_override);
-        prep.transcript_ms = elapsedMs(t0);
-    });
+    const bool skip_asr = isGifPath(request.video_path);
+    std::future<void> transcript_fut;
+    if (skip_asr) {
+        prep.transcript = TranscriptResult{.text = "", .status = "skipped"};
+        prep.transcript_ms = 0;
+    } else {
+        transcript_fut = std::async(std::launch::async, [&] {
+            const auto t0 = Clock::now();
+            prep.transcript =
+                transcriber_->transcribe(request.video_path, request.transcript_override);
+            prep.transcript_ms = elapsedMs(t0);
+        });
+    }
 
     auto model_fut = std::async(std::launch::async, [&] {
         const auto t0 = Clock::now();
@@ -314,7 +335,9 @@ AnalyzeResult VideoContextPipeline::analyze(const AnalyzeRequest& request)
     result.duration_sec = prep.video_info.duration_sec;
 
     if (!model_ok) {
-        transcript_fut.get();
+        if (transcript_fut.valid()) {
+            transcript_fut.get();
+        }
         result.metrics["transcript_ms"] = prep.transcript_ms;
         result.metrics["audio_extract_ms"] = prep.transcript.audio_extract_ms;
         result.metrics["whisper_ms"] = prep.transcript.whisper_ms;
@@ -344,7 +367,9 @@ AnalyzeResult VideoContextPipeline::analyze(const AnalyzeRequest& request)
     }
 
     if (encoded == 0) {
-        transcript_fut.get();
+        if (transcript_fut.valid()) {
+            transcript_fut.get();
+        }
         result.metrics["transcript_ms"] = prep.transcript_ms;
         result.metrics["audio_extract_ms"] = prep.transcript.audio_extract_ms;
         result.metrics["whisper_ms"] = prep.transcript.whisper_ms;
@@ -357,8 +382,10 @@ AnalyzeResult VideoContextPipeline::analyze(const AnalyzeRequest& request)
     result.frames_used = encoded;
 
     // Vision encode already ran in parallel with ASR; join transcript before LLM so speech
-    // can be included in the prompt.
-    transcript_fut.get();
+    // can be included in the prompt (skipped for GIF).
+    if (transcript_fut.valid()) {
+        transcript_fut.get();
+    }
     result.metrics["transcript_ms"] = prep.transcript_ms;
     result.metrics["audio_extract_ms"] = prep.transcript.audio_extract_ms;
     result.metrics["whisper_ms"] = prep.transcript.whisper_ms;
@@ -369,7 +396,7 @@ AnalyzeResult VideoContextPipeline::analyze(const AnalyzeRequest& request)
             ? std::string_view(result.transcript.text)
             : std::string_view{};
     const std::string prompt = LlmRuntime::buildUserVisionPrompt(
-        request.lang, thinking, request.prompt_mode, transcript_for_prompt);
+        request.lang, request.prompt_mode, transcript_for_prompt);
     const float temperature = request.temperature.value_or(-1.0f);
     {
         const auto t0 = Clock::now();

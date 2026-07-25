@@ -73,7 +73,7 @@ def analyze():
         return render_template(
             "result.html",
             ok=False,
-            error="Выберите видеофайл",
+            error="Выберите видео или GIF",
             api_base=API_BASE,
         )
 
@@ -121,7 +121,7 @@ def analyze():
 
         resp = requests.post(
             f"{API_BASE}/v1/video/analyze",
-            files={"file": (video.filename, video.stream, video.mimetype or "video/mp4")},
+            files={"file": (video.filename, video.stream, video.mimetype or "application/octet-stream")},
             data=data,
             timeout=3600,
         )
