@@ -8,11 +8,11 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wextra -fexceptions -pthread -O3")
 
 set(THIRD_PARTY_LIB "${CMAKE_SOURCE_DIR}/third_party/lib")
-set(FFMPEG_BIN_PATH "${CMAKE_SOURCE_DIR}/third_party/ffmpeg-rockchip/bin" CACHE PATH "Path to ffmpeg-rockchip binaries")
 set(FFMPEG_LIB_DIR "${CMAKE_SOURCE_DIR}/third_party/ffmpeg-rockchip/lib")
 set(FFMPEG_INC_DIR "${CMAKE_SOURCE_DIR}/third_party/ffmpeg-rockchip/include")
 
 set(VLM_CORE_SOURCES
+    src/core/audio_extractor.cpp
     src/core/frame_extractor.cpp
     src/core/vision_encoder.cpp
     src/core/llm_runtime.cpp
@@ -32,7 +32,6 @@ target_include_directories(vlm_core PUBLIC
     ${CMAKE_SOURCE_DIR}/third_party/rkllm
     ${FFMPEG_INC_DIR}
 )
-target_compile_definitions(vlm_core PUBLIC FFMPEG_BIN_PATH="${FFMPEG_BIN_PATH}")
 target_link_directories(vlm_core PUBLIC ${FFMPEG_LIB_DIR})
 target_link_libraries(vlm_core PUBLIC
     avcodec
@@ -127,6 +126,13 @@ target_compile_definitions(test_frame_extractor PRIVATE
 target_link_libraries(test_frame_extractor PRIVATE vlm_core)
 vlm_set_runtime_rpath(test_frame_extractor)
 add_test(NAME test_frame_extractor COMMAND test_frame_extractor)
+
+add_executable(test_audio_extractor tests/test_audio_extractor.cpp)
+target_compile_definitions(test_audio_extractor PRIVATE
+    TEST_FIXTURES_DIR="${CMAKE_SOURCE_DIR}/tests/fixtures")
+target_link_libraries(test_audio_extractor PRIVATE vlm_core)
+vlm_set_runtime_rpath(test_audio_extractor)
+add_test(NAME test_audio_extractor COMMAND test_audio_extractor)
 
 add_executable(test_subprocess tests/test_subprocess.cpp)
 target_link_libraries(test_subprocess PRIVATE vlm_core)

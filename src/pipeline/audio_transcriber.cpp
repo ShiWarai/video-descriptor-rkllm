@@ -1,14 +1,14 @@
 #include "pipeline/audio_transcriber.hpp"
 
 #include <chrono>
-#include <cstdio>
-#include <fstream>
 #include <iostream>
 #include <sstream>
 #include <vector>
 
 #include <httplib.h>
 #include <nlohmann/json.hpp>
+
+#include "core/audio_extractor.hpp"
 
 namespace vlm {
 
@@ -64,38 +64,6 @@ struct ParsedUrl {
     return !out.host.empty();
 }
 
-[[nodiscard]] std::string ffmpegPath(const std::string& bin_path, std::string_view name)
-{
-    return bin_path + "/" + std::string(name);
-}
-
-[[nodiscard]] bool runCommand(const std::string& cmd)
-{
-    return std::system(cmd.c_str()) == 0;
-}
-
-[[nodiscard]] std::filesystem::path makeTempAudioPath(const std::filesystem::path& workdir)
-{
-    std::error_code ec;
-    std::filesystem::create_directories(workdir, ec);
-    const auto stamp =
-        std::chrono::duration_cast<std::chrono::nanoseconds>(Clock::now().time_since_epoch())
-            .count();
-    std::ostringstream oss;
-    oss << "whisper_" << stamp << ".ogg";
-    return workdir / oss.str();
-}
-
-[[nodiscard]] bool readFileBytes(const std::filesystem::path& path, std::string& out)
-{
-    std::ifstream in(path, std::ios::binary);
-    if (!in) {
-        return false;
-    }
-    out.assign(std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>());
-    return true;
-}
-
 }  // namespace
 
 TranscriptResult StubAudioTranscriber::transcribe(const std::filesystem::path& /*video_path*/,
@@ -107,11 +75,7 @@ TranscriptResult StubAudioTranscriber::transcribe(const std::filesystem::path& /
     return TranscriptResult{.text = "", .status = "stub"};
 }
 
-HttpWhisperTranscriber::HttpWhisperTranscriber(std::string base_url, std::string ffmpeg_bin_path,
-                                               std::string workdir)
-    : base_url_(std::move(base_url)),
-      ffmpeg_bin_path_(std::move(ffmpeg_bin_path)),
-      workdir_(std::move(workdir))
+HttpWhisperTranscriber::HttpWhisperTranscriber(std::string base_url) : base_url_(std::move(base_url))
 {
     while (!base_url_.empty() && base_url_.back() == '/') {
         base_url_.pop_back();
@@ -132,37 +96,23 @@ TranscriptResult HttpWhisperTranscriber::transcribe(
         return result;
     }
 
-    // mono 16 kHz ogg/opus — compact for whisper 25 MB upload limit
-    const auto audio_path = makeTempAudioPath(workdir_);
     const auto t_extract = Clock::now();
-    const std::string extract_cmd =
-        ffmpegPath(ffmpeg_bin_path_, "ffmpeg") + " -y -v error -i \"" + video_path.string() +
-        "\" -vn -ac 1 -ar 16000 -c:a libopus \"" + audio_path.string() + "\" 2>/dev/null";
-    if (!runCommand(extract_cmd)) {
+    std::vector<uint8_t> wav_bytes;
+    if (!extractAudioWav16kMono(video_path, wav_bytes)) {
         std::cerr << "whisper: audio extract failed for " << video_path << '\n';
-        std::error_code ec;
-        std::filesystem::remove(audio_path, ec);
         result.audio_extract_ms = elapsedMs(t_extract);
         return result;
     }
     result.audio_extract_ms = elapsedMs(t_extract);
 
-    std::string audio_bytes;
-    if (!readFileBytes(audio_path, audio_bytes)) {
-        std::cerr << "whisper: failed to read extracted audio\n";
-        std::error_code ec;
-        std::filesystem::remove(audio_path, ec);
-        return result;
-    }
-    std::error_code ec;
-    std::filesystem::remove(audio_path, ec);
+    std::string audio_payload(reinterpret_cast<const char*>(wav_bytes.data()), wav_bytes.size());
 
     httplib::MultipartFormDataItems items;
     items.push_back(
         {.name = "file",
-         .content = std::move(audio_bytes),
-         .filename = "audio.ogg",
-         .content_type = "audio/ogg"});
+         .content = std::move(audio_payload),
+         .filename = "audio.wav",
+         .content_type = "audio/wav"});
 
     const auto t_whisper = Clock::now();
 
@@ -218,8 +168,7 @@ std::unique_ptr<AudioTranscriber> makeAudioTranscriber(const PipelineConfig& con
     if (config.whisper_url.empty()) {
         return std::make_unique<StubAudioTranscriber>();
     }
-    return std::make_unique<HttpWhisperTranscriber>(config.whisper_url, config.ffmpeg_bin_path,
-                                                   config.workdir);
+    return std::make_unique<HttpWhisperTranscriber>(config.whisper_url);
 }
 
 }  // namespace vlm

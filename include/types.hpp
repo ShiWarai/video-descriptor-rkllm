@@ -61,7 +61,6 @@ struct PipelineConfig {
     float thinking_temperature = 0.6f;
     float thinking_top_p = 0.95f;
     float thinking_presence_penalty = 0.0f;
-    std::string ffmpeg_bin_path = "third_party/ffmpeg-rockchip/bin";
     std::string workdir = "/tmp/vlm_work";
     std::string whisper_url;
     bool enable_thinking = false;

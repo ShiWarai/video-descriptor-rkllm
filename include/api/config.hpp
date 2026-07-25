@@ -115,9 +115,6 @@ struct ServerConfig {
     if (p.contains("thinking_presence_penalty")) {
         cfg.pipeline.thinking_presence_penalty = p["thinking_presence_penalty"].get<float>();
     }
-    if (p.contains("ffmpeg_bin_path")) {
-        cfg.pipeline.ffmpeg_bin_path = p["ffmpeg_bin_path"].get<std::string>();
-    }
     if (p.contains("workdir")) {
         cfg.pipeline.workdir = p["workdir"].get<std::string>();
     }

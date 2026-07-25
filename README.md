@@ -34,7 +34,7 @@ docker compose -f docker-compose.yml -f docker-compose.prerelease.yml pull && do
 ```mermaid
 flowchart LR
   Video[Video/GIF] --> FrameExt[Frame extract]
-  Video --> AudioExt[Audio ffmpeg]
+  Video --> AudioExt[Audio libav]
   FrameExt --> RKNN[Vision 3x RKNN]
   AudioExt --> Whisper[whisper-rknn]
   RKNN --> RKLLM[RKLLM]
@@ -43,7 +43,7 @@ flowchart LR
   API --> Web[Flask UI]
 ```
 
-Параллельно: **кадры** (libav `h264_rkmpp` + `scale_rkrga` → RGB 448×448, однопроходно) + **аудио** (CLI ffmpeg) → ASR + **vision encode** (3× RKNN на NPU CORE_0/1/2, общая очередь с extract) → multimodal LLM.
+Параллельно: **кадры** (libav `h264_rkmpp` + `scale_rkrga` → RGB 448×448) + **аудио** (libav → WAV 16 kHz mono в RAM → whisper-rknn) + **vision encode** (3× RKNN) → multimodal LLM.
 
 | Вход | ASR | Кадры |
 |------|-----|-------|
