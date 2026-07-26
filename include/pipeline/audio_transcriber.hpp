@@ -25,13 +25,14 @@ public:
 
 class HttpWhisperTranscriber final : public AudioTranscriber {
 public:
-    explicit HttpWhisperTranscriber(std::string base_url);
+    HttpWhisperTranscriber(std::string base_url, std::string api_key = {});
 
     TranscriptResult transcribe(const std::filesystem::path& video_path,
                                 const std::optional<std::string>& override_text) override;
 
 private:
     std::string base_url_;
+    std::string api_key_;
 };
 
 [[nodiscard]] std::unique_ptr<AudioTranscriber> makeAudioTranscriber(const PipelineConfig& config);

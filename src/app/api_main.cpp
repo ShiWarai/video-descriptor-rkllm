@@ -45,7 +45,11 @@ void logStartup(const vlm::ServerConfig& cfg, const vlm::VideoContextPipeline& p
         std::cerr << "verbose: on\n";
     }
     if (!cfg.pipeline.whisper_url.empty()) {
-        std::cerr << "whisper: " << cfg.pipeline.whisper_url << '\n';
+        std::cerr << "whisper: " << cfg.pipeline.whisper_url;
+        if (!cfg.pipeline.whisper_api_key.empty()) {
+            std::cerr << " (auth)";
+        }
+        std::cerr << '\n';
     } else {
         std::cerr << "whisper: disabled\n";
     }
@@ -86,6 +90,11 @@ int main(int argc, char** argv)
     if (const char* whisper_url = std::getenv("WHISPER_RKNN_URL")) {
         if (whisper_url[0] != '\0') {
             cfg.pipeline.whisper_url = whisper_url;
+        }
+    }
+    if (const char* whisper_api_key = std::getenv("WHISPER_API_KEY")) {
+        if (whisper_api_key[0] != '\0') {
+            cfg.pipeline.whisper_api_key = whisper_api_key;
         }
     }
     if (const char* verbose_env = std::getenv("VLM_VERBOSE")) {

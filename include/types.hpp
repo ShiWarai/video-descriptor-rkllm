@@ -71,6 +71,7 @@ struct PipelineConfig {
     float thinking_presence_penalty = 0.0f;
     std::string workdir = "/tmp/vlm_work";
     std::string whisper_url;
+    std::string whisper_api_key;  // Bearer for whisper-rknn /transcribe; empty = no auth
     bool enable_thinking = false;
     bool verbose = false;
 };

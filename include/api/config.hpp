@@ -125,6 +125,9 @@ struct ServerConfig {
     if (p.contains("whisper_url")) {
         cfg.pipeline.whisper_url = p["whisper_url"].get<std::string>();
     }
+    if (p.contains("whisper_api_key")) {
+        cfg.pipeline.whisper_api_key = p["whisper_api_key"].get<std::string>();
+    }
     if (p.contains("enable_thinking")) {
         cfg.pipeline.enable_thinking = p["enable_thinking"].get<bool>();
     }

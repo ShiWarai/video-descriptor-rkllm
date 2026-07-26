@@ -94,7 +94,8 @@ TranscriptResult StubAudioTranscriber::transcribe(const std::filesystem::path& /
     return TranscriptResult{.text = "", .status = "stub"};
 }
 
-HttpWhisperTranscriber::HttpWhisperTranscriber(std::string base_url) : base_url_(std::move(base_url))
+HttpWhisperTranscriber::HttpWhisperTranscriber(std::string base_url, std::string api_key)
+    : base_url_(std::move(base_url)), api_key_(std::move(api_key))
 {
     while (!base_url_.empty() && base_url_.back() == '/') {
         base_url_.pop_back();
@@ -136,11 +137,19 @@ TranscriptResult HttpWhisperTranscriber::transcribe(
 
     const auto t_whisper = Clock::now();
 
+    httplib::Headers headers;
+    if (!api_key_.empty()) {
+        headers.emplace("Authorization", "Bearer " + api_key_);
+    }
+
     auto post_transcribe = [&](auto& client) -> httplib::Result {
         client.set_connection_timeout(30, 0);
         client.set_read_timeout(300, 0);
         client.set_write_timeout(30, 0);
-        return client.Post("/transcribe", items);
+        if (headers.empty()) {
+            return client.Post("/transcribe", items);
+        }
+        return client.Post("/transcribe", headers, items);
     };
 
     httplib::Result response;
@@ -190,7 +199,7 @@ std::unique_ptr<AudioTranscriber> makeAudioTranscriber(const PipelineConfig& con
     if (config.whisper_url.empty()) {
         return std::make_unique<StubAudioTranscriber>();
     }
-    return std::make_unique<HttpWhisperTranscriber>(config.whisper_url);
+    return std::make_unique<HttpWhisperTranscriber>(config.whisper_url, config.whisper_api_key);
 }
 
 }  // namespace vlm

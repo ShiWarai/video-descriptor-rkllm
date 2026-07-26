@@ -84,6 +84,7 @@ curl -s localhost:8080/v1/video/analyze \
 | Переменная | Назначение |
 |------------|------------|
 | `WHISPER_RKNN_URL` | ASR; пусто = stub |
+| `WHISPER_API_KEY` | Bearer для whisper-rknn `/transcribe`; пусто = без auth |
 | `VLM_DOWNLOAD_MODELS` | `0`, `0.8b`, `2b`, `4b`, `all` |
 | `VLM_API_KEY` | Bearer для `/v1/*`; пусто = без auth |
 | `VLM_FIX_FREQ` | NPU+CPU+DDR max (`scripts/fix_freq_rk3588.sh`, нужен `privileged`) |

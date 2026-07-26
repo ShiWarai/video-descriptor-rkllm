@@ -34,6 +34,7 @@ target_include_directories(vlm_core PUBLIC
     ${FFMPEG_INC_DIR}
 )
 target_link_directories(vlm_core PUBLIC ${FFMPEG_LIB_DIR})
+target_compile_definitions(vlm_core PUBLIC CPPHTTPLIB_OPENSSL_SUPPORT)
 target_link_libraries(vlm_core PUBLIC
     avcodec
     avformat

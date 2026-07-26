@@ -49,6 +49,7 @@
     "thinking_top_p": 0.95,
     "thinking_presence_penalty": 0.0,
     "whisper_url": "",
+    "whisper_api_key": "",
     "enable_thinking": false,
     "verbose": false
   }
