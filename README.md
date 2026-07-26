@@ -83,14 +83,16 @@ curl -s localhost:8080/v1/video/analyze \
 
 | Переменная | Назначение |
 |------------|------------|
-| `WHISPER_RKNN_URL` | ASR; пусто = stub |
+| `WHISPER_RKNN_URL` | ASR; `http://` (LAN) или `https://` (интернет); пусто = stub |
 | `WHISPER_API_KEY` | Bearer для whisper-rknn `/transcribe`; пусто = без auth |
 | `VLM_DOWNLOAD_MODELS` | `0`, `0.8b`, `2b`, `4b`, `all` |
 | `VLM_API_KEY` | Bearer для `/v1/*`; пусто = без auth |
 | `VLM_FIX_FREQ` | NPU+CPU+DDR max (`scripts/fix_freq_rk3588.sh`, нужен `privileged`) |
 | `VLM_FIX_GPU_FREQ` | `0` = не трогать Mali GPU |
 
-Серверный config — [`config.example.json`](config.example.json): модели, `api_key`, `pipeline.*`.
+**Секреты:** только в `.env` (файл в [`.gitignore`](.gitignore) и [`.dockerignore`](.dockerignore) — не коммитится и не копируется в образ). Шаблон — [`.env.example`](.env.example) без реальных ключей. `VLM_API_KEY` — наш API; `WHISPER_API_KEY` — исходящие запросы к whisper-rknn (web его не видит). Для whisper: `http://` только в доверенной сети, снаружи — `https://` (сборка с OpenSSL, `CPPHTTPLIB_OPENSSL_SUPPORT`).
+
+Серверный config — [`config.example.json`](config.example.json): модели, опционально `api_key` / `pipeline.whisper_api_key` (предпочтительнее env).
 
 ## Модели
 
