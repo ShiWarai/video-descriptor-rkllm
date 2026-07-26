@@ -9,7 +9,7 @@
 
 ## Быстрый старт
 
-**Требования:** RK3588/S, Ubuntu 22.04/24 arm64, RKNPU2 (`/dev/mpp_service`, `/dev/rga`, `/dev/dri`, `/dev/dma_heap`), веса в `./models` или `VLM_DOWNLOAD_MODELS` в `.env`.
+**Требования:** RK3588/S, **8 GiB RAM**, Ubuntu 22.04/24 arm64, RKNPU2 (`/dev/mpp_service`, `/dev/rga`, `/dev/dri`, `/dev/dma_heap`), веса в `./models` или `VLM_DOWNLOAD_MODELS` в `.env`.
 
 ```bash
 git clone https://github.com/ShiWarai/video-descriptor-rkllm.git && cd video-descriptor-rkllm
@@ -75,7 +75,33 @@ curl -s localhost:8080/v1/video/analyze \
 
 Также: `POST /v1/chat/completions` с `video_url` + `extra_body`, `GET /v1/models`.
 
-**k8s:** liveness `/health`, readiness `/ready` (startupProbe `failureThreshold: 60` при `VLM_DOWNLOAD_MODELS=all`).
+**k8s:** liveness `/health`, readiness `/ready` (startupProbe `failureThreshold: 60` при `VLM_DOWNLOAD_MODELS=all`). Ресурсы пода `vlm_api_server` (RK3588 8 GiB, замер RSS):
+
+`qwen3.5-2b-video` (рекомендуется):
+
+```yaml
+resources:
+  requests:
+    cpu: "1"
+    memory: 4Gi
+  limits:
+    cpu: "4"
+    memory: 5Gi
+```
+
+`qwen3.5-0.8b-video`:
+
+```yaml
+resources:
+  requests:
+    cpu: "1"
+    memory: 2Gi
+  limits:
+    cpu: "4"
+    memory: 3Gi
+```
+
+`qwen3.5-4b-video` — отдельная нода **≥12 GiB** RAM (`requests`/`limits` ~7–8Gi), на 8 GiB с k3s не ставить.
 
 ## Конфигурация
 
@@ -90,7 +116,7 @@ curl -s localhost:8080/v1/video/analyze \
 | `VLM_FIX_FREQ` | NPU+CPU+DDR max (`scripts/fix_freq_rk3588.sh`, нужен `privileged`) |
 | `VLM_FIX_GPU_FREQ` | `0` = не трогать Mali GPU |
 
-**Секреты:** только в `.env` (файл в [`.gitignore`](.gitignore) и [`.dockerignore`](.dockerignore) — не коммитится и не копируется в образ). Шаблон — [`.env.example`](.env.example) без реальных ключей. `VLM_API_KEY` — наш API; `WHISPER_API_KEY` — исходящие запросы к whisper-rknn (web его не видит). Для whisper: `http://` только в доверенной сети, снаружи — `https://` (сборка с OpenSSL, `CPPHTTPLIB_OPENSSL_SUPPORT`).
+**Секреты:** только в `.env` (файл в [`.gitignore`](.gitignore) и [`.dockerignore`](.dockerignore) — не коммитится и не образ не копируется). Шаблон — [`.env.example`](.env.example) без реальных ключей. `VLM_API_KEY` — наш API; `WHISPER_API_KEY` — исходящие запросы к whisper-rknn (web его не видит). Для whisper: `http://` только в доверенной сети, снаружи — `https://` (сборка с OpenSSL).
 
 Серверный config — [`config.example.json`](config.example.json): модели, опционально `api_key` / `pipeline.whisper_api_key` (предпочтительнее env).
 

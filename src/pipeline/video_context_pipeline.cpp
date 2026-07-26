@@ -16,6 +16,7 @@
 
 #include "core/frame_extractor.hpp"
 #include "core/media_util.hpp"
+#include "core/system_memory.hpp"
 #include "core/llm_runtime.hpp"
 #include "core/text_util.hpp"
 #include "core/vision_encoder.hpp"
@@ -83,10 +84,31 @@ bool VideoContextPipeline::ensureModel(std::string_view model_id)
 
     vision_.unload();
     llm_.unload();
+#if defined(__GLIBC__)
+    malloc_trim(0);
+#endif
 
     const ModelSpec* spec = registry_.find(*resolved);
     if (!spec) {
         return false;
+    }
+
+    const std::uint64_t estimated = estimateModelRamBytes(
+        spec->llm_model_path, spec->vision_model_path, config_.default_context,
+        VisionEncoder::kWorkerCount);
+    std::string ram_reason;
+    if (!hasEnoughRamForModel(estimated, &ram_reason)) {
+        std::cerr << "Refusing to load model " << *resolved << ": " << ram_reason << '\n';
+        if (config_.verbose) {
+            std::cerr << "  hint: use a smaller model or raise pod memory limits / free node RAM\n";
+        }
+        return false;
+    }
+    if (config_.verbose) {
+        if (const auto avail = readMemAvailableKb()) {
+            std::cerr << "memory: estimated model RSS ~" << (estimated / (1024 * 1024))
+                      << " MiB, MemAvailable ~" << (*avail / 1024) << " MiB\n";
+        }
     }
 
     if (!vision_.load(spec->vision_model_path, config_.verbose)) {
@@ -121,6 +143,9 @@ void VideoContextPipeline::releaseModels()
     vision_.unload();
     llm_.unload();
     loaded_model_id_.clear();
+#if defined(__GLIBC__)
+    malloc_trim(0);
+#endif
     if (!prev.empty()) {
         std::cerr << "Model unloaded: " << prev << std::endl;
     }
