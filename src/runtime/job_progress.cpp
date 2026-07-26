@@ -156,6 +156,7 @@ void JobProgressTracker::beginJob(std::string job_id)
     std::lock_guard lock(mutex_);
     active_job_id_ = std::move(job_id);
     active_ = StoredJob{};
+    active_.job_id = active_job_id_;
     active_.running = true;
     active_.started_at = std::chrono::steady_clock::now();
     active_.state.stage = std::string(kJobStageQueued);
@@ -187,10 +188,13 @@ void JobProgressTracker::finishJob(std::string_view job_id, bool ok, std::string
 std::optional<JobProgressSnapshot> JobProgressTracker::snapshot(std::string_view job_id) const
 {
     std::lock_guard lock(mutex_);
-    if (active_job_id_ != job_id || active_.state.stage.empty()) {
-        return std::nullopt;
+    if (active_.job_id == job_id && !active_.state.stage.empty()) {
+        return buildSnapshot(active_);
     }
-    return buildSnapshot(active_);
+    if (last_finished_.job_id == job_id && !last_finished_.state.stage.empty()) {
+        return buildSnapshot(last_finished_);
+    }
+    return std::nullopt;
 }
 
 JobProgressSnapshot JobProgressTracker::buildSnapshot(const StoredJob& job) const
@@ -201,7 +205,7 @@ JobProgressSnapshot JobProgressTracker::buildSnapshot(const StoredJob& job) cons
         std::chrono::duration<double>(end - job.started_at).count();
 
     JobProgressSnapshot snap;
-    snap.job_id = active_job_id_;
+    snap.job_id = job.job_id;
     snap.stage = job.state.stage;
     snap.stage_label = jobStageLabel(snap.stage);
     snap.elapsed_sec = elapsed;

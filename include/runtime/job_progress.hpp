@@ -61,6 +61,7 @@ public:
 
 private:
     struct StoredJob {
+        std::string job_id;
         JobProgressUpdate state;
         std::chrono::steady_clock::time_point started_at{};
         std::chrono::steady_clock::time_point finished_at{};

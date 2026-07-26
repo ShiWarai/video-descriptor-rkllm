@@ -63,12 +63,29 @@ void test_tracker_lifecycle()
     expect(!tracker.snapshot("job-other").has_value(), "unknown job");
 }
 
+void test_finished_job_survives_new_begin()
+{
+    vlm::JobProgressTracker tracker;
+    tracker.beginJob("job-first");
+    tracker.finishJob("job-first", true);
+    tracker.beginJob("job-second");
+
+    const auto first = tracker.snapshot("job-first");
+    expect(first.has_value(), "finished job after new begin");
+    expect(first->status == "done", "finished status preserved");
+
+    const auto second = tracker.snapshot("job-second");
+    expect(second.has_value(), "new active job snapshot");
+    expect(second->status == "running", "new job running");
+}
+
 }  // namespace
 
 int main()
 {
     test_progress_stages();
     test_tracker_lifecycle();
+    test_finished_job_survives_new_begin();
     std::cout << "test_job_progress: ok\n";
     return 0;
 }
