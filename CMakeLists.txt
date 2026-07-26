@@ -19,9 +19,11 @@ set(VLM_CORE_SOURCES
     src/core/llm_runtime.cpp
     src/core/subprocess.cpp
     src/core/text_util.cpp
+    src/core/system_memory.cpp
     src/pipeline/audio_transcriber.cpp
     src/pipeline/video_context_pipeline.cpp
     src/runtime/service_state.cpp
+    src/runtime/job_progress.cpp
     src/runtime/model_registry.cpp
     src/api/openai_handlers.cpp
 )
@@ -145,6 +147,18 @@ add_executable(test_asr_segments tests/test_asr_segments.cpp)
 target_link_libraries(test_asr_segments PRIVATE vlm_core)
 vlm_set_runtime_rpath(test_asr_segments)
 add_test(NAME test_asr_segments COMMAND test_asr_segments)
+
+add_executable(test_system_memory tests/test_system_memory.cpp)
+target_compile_definitions(test_system_memory PRIVATE
+    TEST_MODELS_DIR="${CMAKE_SOURCE_DIR}/models")
+target_link_libraries(test_system_memory PRIVATE vlm_core)
+vlm_set_runtime_rpath(test_system_memory)
+add_test(NAME test_system_memory COMMAND test_system_memory)
+
+add_executable(test_job_progress tests/test_job_progress.cpp)
+target_link_libraries(test_job_progress PRIVATE vlm_core)
+vlm_set_runtime_rpath(test_job_progress)
+add_test(NAME test_job_progress COMMAND test_job_progress)
 
 add_executable(test_api_auth tests/test_api_auth.cpp)
 target_link_libraries(test_api_auth PRIVATE vlm_core)

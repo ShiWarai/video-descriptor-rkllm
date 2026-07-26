@@ -9,7 +9,7 @@
 
 ## Быстрый старт
 
-**Требования:** RK3588/S, Ubuntu 22.04/24 arm64, RKNPU2 (`/dev/mpp_service`, `/dev/rga`, `/dev/dri`, `/dev/dma_heap`), веса в `./models` или `VLM_DOWNLOAD_MODELS` в `.env`.
+**Требования:** RK3588/S, **8 GiB RAM**, Ubuntu 22.04/24 arm64, RKNPU2 (`/dev/mpp_service`, `/dev/rga`, `/dev/dri`, `/dev/dma_heap`), веса в `./models` или `VLM_DOWNLOAD_MODELS` в `.env`.
 
 ```bash
 git clone https://github.com/ShiWarai/video-descriptor-rkllm.git && cd video-descriptor-rkllm
@@ -35,7 +35,7 @@ docker compose -f docker-compose.yml -f docker-compose.prerelease.yml pull && do
 flowchart LR
   Video[Video/GIF] --> FrameExt[Frame extract]
   Video --> AudioExt[Audio libav]
-  FrameExt --> RKNN[Vision 3x RKNN]
+  FrameExt --> RKNN[Vision RKNN 1-3x]
   AudioExt --> Whisper[whisper-rknn]
   RKNN --> RKLLM[RKLLM]
   RKLLM --> API[vlm_api_server]
@@ -43,7 +43,7 @@ flowchart LR
   API --> Web[Flask UI]
 ```
 
-Параллельно: **кадры** (libav `h264_rkmpp` + `scale_rkrga` → RGB 448×448) + **аудио** (libav → WAV 16 kHz mono в RAM → whisper-rknn) + **vision encode** (3× RKNN) → multimodal LLM.
+Параллельно: **кадры** (libav `h264_rkmpp` + `scale_rkrga` → RGB 448×448) + **аудио** (libav → WAV 16 kHz mono в RAM → whisper-rknn) + **vision encode** (до **3×** RKNN, адаптивно по RAM) → multimodal LLM.
 
 | Вход | ASR | Кадры |
 |------|-----|-------|
@@ -65,7 +65,13 @@ curl -s localhost:8080/ready     # readiness (503 пока грузятся мо
 
 `POST /v1/video/analyze` (multipart): `file`, `model` (`qwen3.5-{0.8b,2b,4b}-video`), `frames`, `frame_budget`, `max_tokens`, `lang` (`ru`|`eng`), `prompt_mode`, `enable_thinking`, `temperature`, `transcript` (override ASR).
 
-Ответ: `description`, `transcript` (`status`: `ok`|`stub`|`error`|`skipped`|`provided`), `metrics` (`wall_ms`, `image_prep_ms`, `vision_encode_ms`, …), `frames_used`.
+Ответ: `job_id`, `description`, `transcript` (`status`: `ok`|`stub`|`error`|`skipped`|`provided`), `metrics` (`wall_ms`, `image_prep_ms`, `vision_encode_ms`, …), `frames_used`.
+
+`GET /v1/jobs/{job_id}` — прогресс активного или только что завершённого job (`progress_percent` 0–100, `stage`, `stage_label`, `details`). Пока `POST /v1/video/analyze` синхронный — опрашивайте из другого клиента по `current_job_id` из `/v1/status` или `job_id` из ответа.
+
+```bash
+curl -s localhost:8080/v1/jobs/job-... -H "Authorization: Bearer $VLM_API_KEY" | jq
+```
 
 ```bash
 curl -s localhost:8080/v1/video/analyze \
@@ -75,7 +81,35 @@ curl -s localhost:8080/v1/video/analyze \
 
 Также: `POST /v1/chat/completions` с `video_url` + `extra_body`, `GET /v1/models`.
 
-**k8s:** liveness `/health`, readiness `/ready` (startupProbe `failureThreshold: 60` при `VLM_DOWNLOAD_MODELS=all`).
+**k8s:** liveness `/health`, readiness `/ready` (startupProbe `failureThreshold: 60` при `VLM_DOWNLOAD_MODELS=all`). Ресурсы пода `vlm_api_server` (RK3588 8 GiB, замер RSS):
+
+`qwen3.5-2b-video` (рекомендуется):
+
+```yaml
+resources:
+  requests:
+    cpu: "1"
+    memory: 4Gi
+  limits:
+    cpu: "4"
+    memory: 5Gi
+```
+
+`qwen3.5-0.8b-video`:
+
+```yaml
+resources:
+  requests:
+    cpu: "1"
+    memory: 2Gi
+  limits:
+    cpu: "4"
+    memory: 3Gi
+```
+
+`qwen3.5-4b-video` — отдельная нода **≥12 GiB** RAM (`requests`/`limits` ~7–8Gi), на 8 GiB с k3s не ставить.
+
+**Память:** перед загрузкой модели оценивается RSS (`estimateModelRamBytes`: LLM + N× vision RKNN + KV); при нехватке `MemAvailable` — отказ с `error` в JSON (HTTP 500), **текущая модель не выгружается**. Резерв под систему — через k8s `resources`, не в config. Vision: **3→2→1** RKNN-контекст(ов) по убыванию, пока оценка влезает; при `<3` последний воркер — `RKNN_NPU_CORE_AUTO` (runtime может задействовать несколько ядер NPU).
 
 ## Конфигурация
 
@@ -83,14 +117,16 @@ curl -s localhost:8080/v1/video/analyze \
 
 | Переменная | Назначение |
 |------------|------------|
-| `WHISPER_RKNN_URL` | ASR; пусто = stub |
+| `WHISPER_RKNN_URL` | ASR; `http://` (LAN) или `https://` (интернет); пусто = stub |
 | `WHISPER_API_KEY` | Bearer для whisper-rknn `/transcribe`; пусто = без auth |
 | `VLM_DOWNLOAD_MODELS` | `0`, `0.8b`, `2b`, `4b`, `all` |
 | `VLM_API_KEY` | Bearer для `/v1/*`; пусто = без auth |
 | `VLM_FIX_FREQ` | NPU+CPU+DDR max (`scripts/fix_freq_rk3588.sh`, нужен `privileged`) |
 | `VLM_FIX_GPU_FREQ` | `0` = не трогать Mali GPU |
 
-Серверный config — [`config.example.json`](config.example.json): модели, `api_key`, `pipeline.*`.
+**Секреты:** только в `.env` (файл в [`.gitignore`](.gitignore) и [`.dockerignore`](.dockerignore) — не коммитится и не образ не копируется). Шаблон — [`.env.example`](.env.example) без реальных ключей. `VLM_API_KEY` — наш API; `WHISPER_API_KEY` — исходящие запросы к whisper-rknn (web его не видит). Для whisper: `http://` только в доверенной сети, снаружи — `https://` (сборка с OpenSSL).
+
+Серверный config — [`config.example.json`](config.example.json): модели, опционально `api_key` / `pipeline.whisper_api_key` (предпочтительнее env).
 
 ## Модели
 

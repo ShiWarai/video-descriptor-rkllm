@@ -16,9 +16,11 @@
 
 #include "core/frame_extractor.hpp"
 #include "core/media_util.hpp"
+#include "core/system_memory.hpp"
 #include "core/llm_runtime.hpp"
 #include "core/text_util.hpp"
 #include "core/vision_encoder.hpp"
+#include "runtime/job_progress.hpp"
 
 namespace vlm {
 
@@ -61,11 +63,15 @@ bool VideoContextPipeline::initialize(std::optional<std::string_view> preload_mo
     return true;
 }
 
-bool VideoContextPipeline::ensureModel(std::string_view model_id)
+bool VideoContextPipeline::ensureModel(std::string_view model_id, std::string* error_out)
 {
     const auto resolved = registry_.resolveId(model_id);
     if (!resolved) {
-        std::cerr << "Unknown model: " << model_id << '\n';
+        const std::string msg = "Unknown model: " + std::string(model_id);
+        std::cerr << msg << '\n';
+        if (error_out) {
+            *error_out = msg;
+        }
         return false;
     }
 
@@ -73,24 +79,55 @@ bool VideoContextPipeline::ensureModel(std::string_view model_id)
         return true;
     }
 
+    const ModelSpec* spec = registry_.find(*resolved);
+    if (!spec) {
+        if (error_out) {
+            *error_out = "Model spec not found: " + *resolved;
+        }
+        return false;
+    }
+
+    std::string ram_reason;
+    const int workers = planVisionWorkers(*resolved, &ram_reason);
+    if (workers <= 0) {
+        std::cerr << "Refusing to load model " << *resolved << ": " << ram_reason << '\n';
+        if (config_.verbose) {
+            std::cerr << "  hint: use a smaller model or raise pod memory limits / free node RAM\n";
+        }
+        if (error_out) {
+            *error_out = ram_reason;
+        }
+        // Keep currently loaded model (if any) — do not unload on refuse.
+        return false;
+    }
+
     if (config_.verbose) {
         std::cerr << "Loading model: " << *resolved;
         if (!loaded_model_id_.empty()) {
             std::cerr << " (replacing " << loaded_model_id_ << ')';
         }
-        std::cerr << '\n';
+        std::cerr << " with " << workers << " vision worker(s)\n";
+        if (const auto avail = readMemAvailableKb()) {
+            const auto est = estimateModelRamBytes(spec->llm_model_path, spec->vision_model_path,
+                                                   config_.default_context, workers);
+            std::cerr << "memory: estimated model RSS ~" << (est / (1024 * 1024))
+                      << " MiB, MemAvailable ~" << (*avail / 1024) << " MiB\n";
+        }
     }
 
     vision_.unload();
     llm_.unload();
+    loaded_model_id_.clear();
+#if defined(__GLIBC__)
+    malloc_trim(0);
+#endif
 
-    const ModelSpec* spec = registry_.find(*resolved);
-    if (!spec) {
-        return false;
-    }
-
-    if (!vision_.load(spec->vision_model_path, config_.verbose)) {
-        std::cerr << "Failed to load vision model for " << spec->id << '\n';
+    if (!vision_.load(spec->vision_model_path, config_.verbose, workers)) {
+        const std::string msg = "Failed to load vision model for " + spec->id;
+        std::cerr << msg << '\n';
+        if (error_out) {
+            *error_out = msg;
+        }
         return false;
     }
     const int top_k = spec->top_k.value_or(config_.top_k);
@@ -102,14 +139,53 @@ bool VideoContextPipeline::ensureModel(std::string_view model_id)
                                      config_.thinking_presence_penalty);
     if (!llm_.load(spec->llm_model_path, config_.default_max_tokens, config_.default_context,
                    config_.default_lang, config_.enable_thinking, config_.verbose)) {
-        std::cerr << "Failed to load LLM for " << spec->id << '\n';
+        const std::string msg = "Failed to load LLM for " + spec->id;
+        std::cerr << msg << '\n';
         vision_.unload();
+        if (error_out) {
+            *error_out = msg;
+        }
         return false;
     }
 
     loaded_model_id_ = spec->id;
-    std::cerr << "Model loaded: " << loaded_model_id_ << '\n';
+    std::cerr << "Model loaded: " << loaded_model_id_ << " (vision workers=" << workers << ")\n";
     return true;
+}
+
+int VideoContextPipeline::planVisionWorkers(std::string_view model_id,
+                                            std::string* error_out) const
+{
+    const auto resolved = registry_.resolveId(model_id);
+    if (!resolved) {
+        if (error_out) {
+            *error_out = "Unknown model: " + std::string(model_id);
+        }
+        return 0;
+    }
+    if (loaded_model_id_ == *resolved && vision_.loaded() && llm_.loaded()) {
+        return vision_.workerCount();
+    }
+    const ModelSpec* spec = registry_.find(*resolved);
+    if (!spec) {
+        if (error_out) {
+            *error_out = "Model spec not found: " + *resolved;
+        }
+        return 0;
+    }
+
+    std::uint64_t credit = 0;
+    if (!loaded_model_id_.empty() && loaded_model_id_ != *resolved && vision_.loaded() &&
+        llm_.loaded()) {
+        if (const ModelSpec* cur = registry_.find(loaded_model_id_)) {
+            credit = estimateModelRamBytes(cur->llm_model_path, cur->vision_model_path,
+                                           config_.default_context, vision_.workerCount());
+        }
+    }
+
+    return pickVisionWorkerCount(spec->llm_model_path, spec->vision_model_path,
+                                 config_.default_context, VisionEncoder::kWorkerCount, credit,
+                                 error_out);
 }
 
 void VideoContextPipeline::releaseModels()
@@ -121,6 +197,9 @@ void VideoContextPipeline::releaseModels()
     vision_.unload();
     llm_.unload();
     loaded_model_id_.clear();
+#if defined(__GLIBC__)
+    malloc_trim(0);
+#endif
     if (!prev.empty()) {
         std::cerr << "Model unloaded: " << prev << std::endl;
     }
@@ -156,7 +235,13 @@ int VideoContextPipeline::effectiveMaxFrames(const AnalyzeRequest& request) cons
 AnalyzeResult VideoContextPipeline::analyze(const AnalyzeRequest& request)
 {
     AnalyzeResult result;
+    result.job_id = request.job_id;
     const auto t_total = Clock::now();
+    auto report = [&](const JobProgressUpdate& update) {
+        if (request.on_progress) {
+            request.on_progress(update);
+        }
+    };
     auto finish = [&]() -> AnalyzeResult& {
         // Drop any leftover full-res frames and embeddings from this request.
         vision_.clear();
@@ -169,6 +254,7 @@ AnalyzeResult VideoContextPipeline::analyze(const AnalyzeRequest& request)
 
     if (!ready_) {
         result.error = "Pipeline not initialized";
+        report({.stage = std::string(kJobStageFailed)});
         return finish();
     }
 
@@ -194,6 +280,19 @@ AnalyzeResult VideoContextPipeline::analyze(const AnalyzeRequest& request)
     result.frame_budget = budget;
     result.frames_capped_by_context = effective < request.max_frames;
 
+    // Fail fast before extract/whisper: avoids ~minute UI hang when model cannot fit.
+    {
+        std::string ram_reason;
+        if (planVisionWorkers(model_id, &ram_reason) <= 0) {
+            std::cerr << "Refusing analyze for " << model_id << ": " << ram_reason << '\n';
+            result.error = ram_reason;
+            report({.stage = std::string(kJobStageFailed)});
+            return finish();
+        }
+    }
+
+    report({.stage = std::string(kJobStageLoadingModel), .frames_total = effective});
+
     struct PrepState {
         std::mutex mu;
         std::condition_variable cv;
@@ -205,6 +304,7 @@ AnalyzeResult VideoContextPipeline::analyze(const AnalyzeRequest& request)
         std::atomic<bool> model_load_finished{false};
         std::atomic<bool> encode_abort{false};
         bool model_ok = false;
+        std::string load_error;
         double model_load_ms = 0;
         double extract_ms = 0;
         double transcript_ms = 0;
@@ -228,33 +328,50 @@ AnalyzeResult VideoContextPipeline::analyze(const AnalyzeRequest& request)
         prep.transcript_ms = 0;
     } else {
         transcript_fut = std::async(std::launch::async, [&] {
+            report({.stage = std::string(kJobStageTranscribing)});
             const auto t0 = Clock::now();
             prep.transcript =
                 transcriber_->transcribe(request.video_path, request.transcript_override);
             prep.transcript_ms = elapsedMs(t0);
+            report({.stage = std::string(kJobStageTranscribing), .transcript_done = true});
         });
     }
 
     auto model_fut = std::async(std::launch::async, [&] {
         const auto t0 = Clock::now();
-        const bool ok = ensureModel(model_id);
+        std::string load_error;
+        report({.stage = std::string(kJobStageLoadingModel)});
+        const bool ok = ensureModel(model_id, &load_error);
         prep.model_load_ms = elapsedMs(t0);
         prep.model_ok = ok;
         prep.model_ready = ok;
         prep.model_load_finished = true;
+        if (ok) {
+            report({.stage = std::string(kJobStageEncodingVision),
+                    .vision_total = effective,
+                    .model_load_done = true});
+        }
+        if (!ok && !load_error.empty()) {
+            std::lock_guard lock(prep.mu);
+            prep.load_error = std::move(load_error);
+        }
         prep.cv.notify_all();
         return ok;
     });
 
     FrameProgressCallback extract_progress;
-    if (config_.verbose) {
-        extract_progress = [](int cur, int total) {
+    extract_progress = [&](int cur, int total) {
+        if (config_.verbose) {
             std::cerr << "\rFrame extract: " << cur << '/' << total;
             if (cur == total) {
                 std::cerr << '\n';
             }
-        };
-    }
+        }
+        report({.stage = std::string(kJobStageExtractingFrames),
+                .frames_done = cur,
+                .frames_total = total,
+                .model_load_done = prep.model_load_finished.load() && prep.model_ok});
+    };
 
     auto extract_fut = std::async(std::launch::async, [&] {
         const auto t0 = Clock::now();
@@ -285,15 +402,18 @@ AnalyzeResult VideoContextPipeline::analyze(const AnalyzeRequest& request)
     });
 
     int encoded = 0;
-    VisionProgressCallback vision_progress;
-    if (config_.verbose) {
-        vision_progress = [&](int cur, int total) {
+    VisionProgressCallback vision_progress = [&](int cur, int total) {
+        if (config_.verbose) {
             std::cerr << "\rVision encode: " << cur << '/' << total;
             if (cur == total) {
                 std::cerr << '\n';
             }
-        };
-    }
+        }
+        report({.stage = std::string(kJobStageEncodingVision),
+                .vision_done = cur,
+                .vision_total = total,
+                .model_load_done = true});
+    };
 
     {
         std::unique_lock lock(prep.mu);
@@ -331,7 +451,8 @@ AnalyzeResult VideoContextPipeline::analyze(const AnalyzeRequest& request)
         result.metrics["audio_extract_ms"] = prep.transcript.audio_extract_ms;
         result.metrics["whisper_ms"] = prep.transcript.whisper_ms;
         result.transcript = std::move(prep.transcript);
-        result.error = "Failed to load model: " + model_id;
+        result.error = prep.load_error.empty() ? ("Failed to load model: " + model_id)
+                                               : prep.load_error;
         return finish();
     }
 
@@ -391,6 +512,15 @@ AnalyzeResult VideoContextPipeline::analyze(const AnalyzeRequest& request)
         request.lang, request.prompt_mode, frame_times, segments, flat_transcript,
         result.duration_sec);
     const float temperature = request.temperature.value_or(-1.0f);
+    const int max_new_tokens =
+        request.max_tokens > 0 ? request.max_tokens : config_.default_max_tokens;
+    report({.stage = std::string(kJobStageGenerating),
+            .generate_tokens = 0,
+            .max_new_tokens = max_new_tokens,
+            .model_load_done = true,
+            .transcript_done = skip_asr || prep.transcript.status == "ok" ||
+                               prep.transcript.status == "skipped" ||
+                               prep.transcript.status == "provided"});
     {
         const auto t0 = Clock::now();
         llm_.clearKvCache();
@@ -399,6 +529,11 @@ AnalyzeResult VideoContextPipeline::analyze(const AnalyzeRequest& request)
         result.metrics["llm_generate_ms"] = elapsedMs(t0);
         result.metrics["max_new_tokens"] = llm_.lastMaxNewTokens();
         result.metrics["generate_tokens"] = llm_.lastGenerateTokens();
+        report({.stage = std::string(kJobStageGenerating),
+                .generate_tokens = llm_.lastGenerateTokens(),
+                .max_new_tokens = llm_.lastMaxNewTokens(),
+                .model_load_done = true,
+                .transcript_done = true});
         if (llm_.lastTruncatedByMaxTokens()) {
             result.metrics["truncated"] = 1;
         }

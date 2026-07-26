@@ -49,6 +49,9 @@ void logStartup(const vlm::ServerConfig& cfg, const vlm::VideoContextPipeline& p
         if (!cfg.pipeline.whisper_api_key.empty()) {
             std::cerr << " (auth)";
         }
+        if (cfg.pipeline.whisper_url.rfind("http://", 0) == 0) {
+            std::cerr << " [http: use only on trusted LAN; prefer https:// for WAN]";
+        }
         std::cerr << '\n';
     } else {
         std::cerr << "whisper: disabled\n";
