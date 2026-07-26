@@ -23,6 +23,7 @@ set(VLM_CORE_SOURCES
     src/pipeline/audio_transcriber.cpp
     src/pipeline/video_context_pipeline.cpp
     src/runtime/service_state.cpp
+    src/runtime/job_progress.cpp
     src/runtime/model_registry.cpp
     src/api/openai_handlers.cpp
 )
@@ -153,6 +154,11 @@ target_compile_definitions(test_system_memory PRIVATE
 target_link_libraries(test_system_memory PRIVATE vlm_core)
 vlm_set_runtime_rpath(test_system_memory)
 add_test(NAME test_system_memory COMMAND test_system_memory)
+
+add_executable(test_job_progress tests/test_job_progress.cpp)
+target_link_libraries(test_job_progress PRIVATE vlm_core)
+vlm_set_runtime_rpath(test_job_progress)
+add_test(NAME test_job_progress COMMAND test_job_progress)
 
 add_executable(test_api_auth tests/test_api_auth.cpp)
 target_link_libraries(test_api_auth PRIVATE vlm_core)

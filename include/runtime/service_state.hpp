@@ -1,8 +1,13 @@
 #pragma once
 
 #include <chrono>
+#include <functional>
 #include <mutex>
+#include <optional>
 #include <string>
+#include <string_view>
+
+#include "runtime/job_progress.hpp"
 
 namespace vlm {
 
@@ -25,7 +30,9 @@ public:
     void setModelLoaded(bool loaded) noexcept;
     void setReady(bool ready) noexcept;
     void onJobStarted(const std::string& job_id, const std::string& model_id);
-    void onJobFinished();
+    void onJobFinished(bool ok = true, std::string_view error = {});
+    void updateJobProgress(const std::string& job_id, const JobProgressUpdate& update);
+    [[nodiscard]] std::optional<JobProgressSnapshot> jobProgress(std::string_view job_id) const;
     void setLoadedModelId(const std::string& model_id);
 
     [[nodiscard]] bool isReady() const noexcept;
@@ -40,6 +47,7 @@ private:
     std::chrono::steady_clock::time_point started_at_{std::chrono::steady_clock::now()};
     bool model_loaded_ = false;
     bool ready_ = false;
+    JobProgressTracker jobs_;
 };
 
 }  // namespace vlm

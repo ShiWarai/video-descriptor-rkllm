@@ -6,34 +6,30 @@
   <title>Video Descriptor</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
-<body>
+<body class="page-index">
   <main class="container">
-    <header>
-      <h1>Video Descriptor</h1>
-      <p class="muted">API: <code>{{ api_base }}</code></p>
-    </header>
-
-    <section class="status card">
-      <h2>Статус сервиса</h2>
-      <p id="status-error" class="error" {% if status.get('status') != 'unreachable' %}hidden{% endif %}>
+    <header class="page-header">
+      <div>
+        <h1>Video Descriptor</h1>
+      </div>
+      <dl id="status-dl" class="status-inline" {% if status.get('status') == 'unreachable' %}hidden{% endif %}>
+        <div><dt>status</dt><dd id="st-status">{{ status.get('status', '—') }}</dd></div>
+        <div><dt>job</dt><dd id="st-job" class="mono">{{ status.get('current_job_id') or '—' }}</dd></div>
+        <div><dt>model</dt><dd id="st-model">{{ status.get('loaded_model_id') or '—' }}</dd></div>
+      </dl>
+      <p id="status-error" class="error status-error" {% if status.get('status') != 'unreachable' %}hidden{% endif %}>
         {{ status.get('error', '') }}
       </p>
-      <dl id="status-dl" {% if status.get('status') == 'unreachable' %}hidden{% endif %}>
-        <div><dt>status</dt><dd id="st-status">{{ status.get('status', '—') }}</dd></div>
-        <div><dt>current_job</dt><dd id="st-job">{{ status.get('current_job_id') or '—' }}</dd></div>
-        <div><dt>loaded_model</dt><dd id="st-model">{{ status.get('loaded_model_id') or '—' }}</dd></div>
-      </dl>
-    </section>
+    </header>
 
-    <section class="card">
-      <h2>Анализ видео</h2>
-      <form action="{{ url_for('analyze') }}" method="post" enctype="multipart/form-data">
-        <label>
+    <section class="card card-main">
+      <form id="analyze-form" action="{{ url_for('analyze') }}" method="post" enctype="multipart/form-data">
+        <label class="label-file">
           Видео / GIF
           <input type="file" name="video" accept="video/*,image/gif,.gif" required>
         </label>
 
-        <div class="row">
+        <div class="row row-2">
           <label>
             Модель
             <select name="model" required>
@@ -58,31 +54,38 @@
               <option value="eng">eng</option>
             </select>
           </label>
+        </div>
+
+        <div class="row row-2">
+          <label>
+            Кадры
+            <input type="number" name="frames" value="16" min="1" max="128">
+          </label>
           <label>
             Промпт
             <select name="prompt_mode">
-              <option value="simple">Простое описание</option>
+              <option value="simple">Простое</option>
               <option value="detailed" selected>Подробное</option>
             </select>
           </label>
         </div>
 
-        <div class="row">
-          <label>
-            Кадры (max)
-            <input type="number" name="frames" value="16" min="1" max="128">
-          </label>
-          <label>
-            Frame budget
-            <input type="number" name="frame_budget" placeholder="из config" min="0" max="128">
-          </label>
-        </div>
-
-        <div class="row">
-          <label>
-            Max tokens
-            <input type="number" name="max_tokens" placeholder="1024 (config)" min="0" max="8192">
-          </label>
+        <details class="advanced">
+          <summary>Дополнительно</summary>
+          <div class="row row-3">
+            <label>
+              Frame budget
+              <input type="number" name="frame_budget" placeholder="config" min="0" max="128">
+            </label>
+            <label>
+              Max tokens
+              <input type="number" name="max_tokens" placeholder="config" min="0" max="8192">
+            </label>
+            <label>
+              Temperature
+              <input type="number" name="temperature" placeholder="config" min="0" max="2" step="0.1">
+            </label>
+          </div>
           <label>
             Thinking
             <select name="enable_thinking">
@@ -91,14 +94,17 @@
               <option value="true">on</option>
             </select>
           </label>
-          <label>
-            Temperature
-            <input type="number" name="temperature" placeholder="из config" min="0" max="2" step="0.1">
-          </label>
-        </div>
+        </details>
 
-        <button type="submit" {% if not models %}disabled{% endif %}>Отправить</button>
+        <button type="submit" id="analyze-submit" {% if not models %}disabled{% endif %}>Отправить</button>
       </form>
+
+      <div id="job-progress" class="job-progress" hidden>
+        <div class="progress-track" aria-hidden="true">
+          <div id="progress-fill" class="progress-fill"></div>
+        </div>
+        <p id="progress-label" class="progress-label muted">Подготовка…</p>
+      </div>
     </section>
   </main>
   <script>
@@ -108,8 +114,19 @@
       const st = document.getElementById("st-status");
       const job = document.getElementById("st-job");
       const model = document.getElementById("st-model");
+      const form = document.getElementById("analyze-form");
+      const submitBtn = document.getElementById("analyze-submit");
+      const progressBox = document.getElementById("job-progress");
+      const progressFill = document.getElementById("progress-fill");
+      const progressLabel = document.getElementById("progress-label");
 
       function dash(v) { return v && String(v).length ? v : "—"; }
+
+      function setProgress(percent, label) {
+        const p = Math.max(0, Math.min(100, Number(percent) || 0));
+        progressFill.style.width = p.toFixed(1) + "%";
+        progressLabel.textContent = label || "Обработка…";
+      }
 
       async function refreshStatus() {
         try {
@@ -119,7 +136,7 @@
             errEl.textContent = data.error || "API недоступен";
             errEl.hidden = false;
             dl.hidden = true;
-            return;
+            return null;
           }
           errEl.hidden = true;
           dl.hidden = false;
@@ -127,15 +144,101 @@
           job.textContent = dash(data.current_job_id);
           model.textContent = dash(data.loaded_model_id);
           st.classList.toggle("busy", data.status === "busy");
+          return data;
         } catch (e) {
           errEl.textContent = String(e);
           errEl.hidden = false;
           dl.hidden = true;
+          return null;
         }
       }
 
-      refreshStatus();
-      setInterval(refreshStatus, 2000);
+      async function pollJobProgress(knownJobId) {
+        let jobId = knownJobId;
+        if (!jobId) {
+          const status = await refreshStatus();
+          jobId = status && status.current_job_id;
+        }
+        if (!jobId) {
+          return null;
+        }
+        const r = await fetch("/api/jobs/" + encodeURIComponent(jobId), { cache: "no-store" });
+        if (!r.ok) {
+          return jobId;
+        }
+        const data = await r.json();
+        const pct = data.progress_percent ?? 0;
+        const label = data.stage_label
+          ? data.stage_label + " — " + pct.toFixed(0) + "%"
+          : "Обработка — " + pct.toFixed(0) + "%";
+        setProgress(pct, label);
+        job.textContent = dash(data.job_id || jobId);
+        st.textContent = data.status === "done" ? "idle" : "busy";
+        st.classList.toggle("busy", data.status === "running");
+        return jobId;
+      }
+
+      let statusTimer = null;
+
+      function startStatusPolling() {
+        refreshStatus();
+        if (!statusTimer) {
+          statusTimer = setInterval(refreshStatus, 2000);
+        }
+      }
+
+      startStatusPolling();
+
+      if (!form || !submitBtn) {
+        return;
+      }
+
+      form.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        if (submitBtn.disabled) {
+          return;
+        }
+
+        submitBtn.disabled = true;
+        progressBox.hidden = false;
+        setProgress(0, "Загрузка файла…");
+
+        let knownJobId = null;
+        let jobPollTimer = null;
+
+        const stopJobPoll = () => {
+          if (jobPollTimer) {
+            clearInterval(jobPollTimer);
+            jobPollTimer = null;
+          }
+        };
+
+        jobPollTimer = setInterval(async () => {
+          try {
+            knownJobId = await pollJobProgress(knownJobId);
+          } catch (_) {
+            /* ignore transient poll errors */
+          }
+        }, 500);
+
+        try {
+          const resp = await fetch(form.action, {
+            method: "POST",
+            body: new FormData(form),
+          });
+          stopJobPoll();
+          setProgress(100, "Готово");
+          const html = await resp.text();
+          document.open();
+          document.write(html);
+          document.close();
+        } catch (err) {
+          stopJobPoll();
+          submitBtn.disabled = false;
+          progressBox.hidden = true;
+          alert("Ошибка запроса: " + err);
+        }
+      });
     })();
   </script>
 </body>

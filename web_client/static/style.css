@@ -59,6 +59,42 @@ button {
   cursor: pointer;
 }
 
+button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.job-progress {
+  margin-top: 1.25rem;
+}
+
+.progress-track {
+  height: 10px;
+  border-radius: 999px;
+  background: #0b111c;
+  border: 1px solid var(--border);
+  overflow: hidden;
+}
+
+.progress-fill {
+  height: 100%;
+  width: 0%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #3d6fd6, var(--accent));
+  transition: width 0.35s ease;
+}
+
+.progress-label {
+  margin: 0.65rem 0 0;
+  font-size: 0.95rem;
+}
+
+.progress-job {
+  margin: 0.25rem 0 0;
+  font-size: 0.8rem;
+  word-break: break-all;
+}
+
 .row {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
@@ -146,4 +182,153 @@ a { color: var(--accent); }
 
 @media (max-width: 640px) {
   .row { grid-template-columns: 1fr; }
+}
+
+/* —— index page: compact layout for ~768px height —— */
+.page-index .container {
+  max-width: 720px;
+  padding: 0.75rem 1rem 1rem;
+}
+
+.page-index .page-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.35rem 1rem;
+  margin-bottom: 0.5rem;
+}
+
+.page-index header h1 {
+  margin: 0;
+  font-size: 1.25rem;
+  line-height: 1.2;
+}
+
+.page-index .status-inline {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 1rem;
+  margin: 0;
+  font-size: 0.8rem;
+}
+
+.page-index .status-inline > div {
+  display: flex;
+  gap: 0.35rem;
+  align-items: baseline;
+}
+
+.page-index .status-inline dt {
+  color: var(--muted);
+}
+
+.page-index .status-inline dd {
+  margin: 0;
+}
+
+.page-index .status-inline .mono {
+  max-width: 10rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.page-index .status-error {
+  width: 100%;
+  margin: 0;
+  font-size: 0.85rem;
+}
+
+.page-index .card-main {
+  margin-top: 0;
+  padding: 0.85rem 1rem;
+}
+
+.page-index label {
+  margin-bottom: 0.5rem;
+  font-size: 0.85rem;
+}
+
+.page-index .label-file {
+  margin-bottom: 0.65rem;
+}
+
+.page-index input,
+.page-index select,
+.page-index button {
+  margin-top: 0.2rem;
+  padding: 0.4rem 0.55rem;
+  font-size: 0.9rem;
+}
+
+.page-index .row {
+  gap: 0.5rem;
+}
+
+.page-index .row-2 {
+  grid-template-columns: repeat(2, 1fr);
+}
+
+.page-index .row-3 {
+  grid-template-columns: repeat(3, 1fr);
+}
+
+.page-index .advanced {
+  margin: 0.25rem 0 0.5rem;
+  font-size: 0.85rem;
+}
+
+.page-index .advanced summary {
+  cursor: pointer;
+  color: var(--muted);
+  user-select: none;
+  padding: 0.15rem 0;
+}
+
+.page-index .advanced[open] summary {
+  margin-bottom: 0.35rem;
+}
+
+.page-index .job-progress {
+  margin-top: 0.65rem;
+}
+
+.page-index .progress-track {
+  height: 6px;
+}
+
+.page-index .progress-label {
+  margin: 0.35rem 0 0;
+  font-size: 0.8rem;
+}
+
+.page-index button[type="submit"] {
+  margin-top: 0.25rem;
+  padding: 0.5rem;
+}
+
+@media (max-height: 800px) {
+  .page-index .container {
+    padding-top: 0.5rem;
+    padding-bottom: 0.5rem;
+  }
+
+  .page-index header h1 {
+    font-size: 1.1rem;
+  }
+
+  .page-index .card-main {
+    padding: 0.65rem 0.85rem;
+  }
+
+  .page-index label {
+    margin-bottom: 0.35rem;
+  }
+
+  .page-index input,
+  .page-index select,
+  .page-index button {
+    padding: 0.35rem 0.5rem;
+  }
 }

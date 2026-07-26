@@ -1,10 +1,13 @@
 #pragma once
 
 #include <filesystem>
+#include <functional>
 #include <map>
 #include <optional>
 #include <string>
 #include <vector>
+
+#include "runtime/job_progress.hpp"
 
 namespace vlm {
 
@@ -34,9 +37,12 @@ struct AnalyzeRequest {
     std::optional<bool> enable_thinking;  // nullopt → pipeline.enable_thinking
     std::optional<float> temperature;     // nullopt → pipeline.temperature
     std::optional<std::string> transcript_override;
+    std::string job_id;
+    std::function<void(const JobProgressUpdate&)> on_progress;
 };
 
 struct AnalyzeResult {
+    std::string job_id;
     std::string model;
     std::string description;
     TranscriptResult transcript;

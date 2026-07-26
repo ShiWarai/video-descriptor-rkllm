@@ -26,13 +26,29 @@ void ServiceState::onJobStarted(const std::string& job_id, const std::string& /*
     status_ = ServiceStatus::Busy;
     current_job_id_ = job_id;
     job_started_ = std::chrono::steady_clock::now();
+    jobs_.beginJob(job_id);
 }
 
-void ServiceState::onJobFinished()
+void ServiceState::onJobFinished(bool ok, std::string_view error)
 {
     std::lock_guard lock(mutex_);
+    if (!current_job_id_.empty()) {
+        jobs_.finishJob(current_job_id_, ok, error);
+    }
     current_job_id_.clear();
     status_ = ServiceStatus::Idle;
+}
+
+void ServiceState::updateJobProgress(const std::string& job_id, const JobProgressUpdate& update)
+{
+    std::lock_guard lock(mutex_);
+    jobs_.updateJob(job_id, update);
+}
+
+std::optional<JobProgressSnapshot> ServiceState::jobProgress(std::string_view job_id) const
+{
+    std::lock_guard lock(mutex_);
+    return jobs_.snapshot(job_id);
 }
 
 void ServiceState::setLoadedModelId(const std::string& model_id)

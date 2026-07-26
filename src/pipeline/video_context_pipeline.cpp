@@ -20,6 +20,7 @@
 #include "core/llm_runtime.hpp"
 #include "core/text_util.hpp"
 #include "core/vision_encoder.hpp"
+#include "runtime/job_progress.hpp"
 
 namespace vlm {
 
@@ -234,7 +235,13 @@ int VideoContextPipeline::effectiveMaxFrames(const AnalyzeRequest& request) cons
 AnalyzeResult VideoContextPipeline::analyze(const AnalyzeRequest& request)
 {
     AnalyzeResult result;
+    result.job_id = request.job_id;
     const auto t_total = Clock::now();
+    auto report = [&](const JobProgressUpdate& update) {
+        if (request.on_progress) {
+            request.on_progress(update);
+        }
+    };
     auto finish = [&]() -> AnalyzeResult& {
         // Drop any leftover full-res frames and embeddings from this request.
         vision_.clear();
@@ -247,6 +254,7 @@ AnalyzeResult VideoContextPipeline::analyze(const AnalyzeRequest& request)
 
     if (!ready_) {
         result.error = "Pipeline not initialized";
+        report({.stage = std::string(kJobStageFailed)});
         return finish();
     }
 
@@ -278,9 +286,12 @@ AnalyzeResult VideoContextPipeline::analyze(const AnalyzeRequest& request)
         if (planVisionWorkers(model_id, &ram_reason) <= 0) {
             std::cerr << "Refusing analyze for " << model_id << ": " << ram_reason << '\n';
             result.error = ram_reason;
+            report({.stage = std::string(kJobStageFailed)});
             return finish();
         }
     }
+
+    report({.stage = std::string(kJobStageLoadingModel), .frames_total = effective});
 
     struct PrepState {
         std::mutex mu;
@@ -317,21 +328,29 @@ AnalyzeResult VideoContextPipeline::analyze(const AnalyzeRequest& request)
         prep.transcript_ms = 0;
     } else {
         transcript_fut = std::async(std::launch::async, [&] {
+            report({.stage = std::string(kJobStageTranscribing)});
             const auto t0 = Clock::now();
             prep.transcript =
                 transcriber_->transcribe(request.video_path, request.transcript_override);
             prep.transcript_ms = elapsedMs(t0);
+            report({.stage = std::string(kJobStageTranscribing), .transcript_done = true});
         });
     }
 
     auto model_fut = std::async(std::launch::async, [&] {
         const auto t0 = Clock::now();
         std::string load_error;
+        report({.stage = std::string(kJobStageLoadingModel)});
         const bool ok = ensureModel(model_id, &load_error);
         prep.model_load_ms = elapsedMs(t0);
         prep.model_ok = ok;
         prep.model_ready = ok;
         prep.model_load_finished = true;
+        if (ok) {
+            report({.stage = std::string(kJobStageEncodingVision),
+                    .vision_total = effective,
+                    .model_load_done = true});
+        }
         if (!ok && !load_error.empty()) {
             std::lock_guard lock(prep.mu);
             prep.load_error = std::move(load_error);
@@ -341,14 +360,18 @@ AnalyzeResult VideoContextPipeline::analyze(const AnalyzeRequest& request)
     });
 
     FrameProgressCallback extract_progress;
-    if (config_.verbose) {
-        extract_progress = [](int cur, int total) {
+    extract_progress = [&](int cur, int total) {
+        if (config_.verbose) {
             std::cerr << "\rFrame extract: " << cur << '/' << total;
             if (cur == total) {
                 std::cerr << '\n';
             }
-        };
-    }
+        }
+        report({.stage = std::string(kJobStageExtractingFrames),
+                .frames_done = cur,
+                .frames_total = total,
+                .model_load_done = prep.model_load_finished.load() && prep.model_ok});
+    };
 
     auto extract_fut = std::async(std::launch::async, [&] {
         const auto t0 = Clock::now();
@@ -379,15 +402,18 @@ AnalyzeResult VideoContextPipeline::analyze(const AnalyzeRequest& request)
     });
 
     int encoded = 0;
-    VisionProgressCallback vision_progress;
-    if (config_.verbose) {
-        vision_progress = [&](int cur, int total) {
+    VisionProgressCallback vision_progress = [&](int cur, int total) {
+        if (config_.verbose) {
             std::cerr << "\rVision encode: " << cur << '/' << total;
             if (cur == total) {
                 std::cerr << '\n';
             }
-        };
-    }
+        }
+        report({.stage = std::string(kJobStageEncodingVision),
+                .vision_done = cur,
+                .vision_total = total,
+                .model_load_done = true});
+    };
 
     {
         std::unique_lock lock(prep.mu);
@@ -486,6 +512,15 @@ AnalyzeResult VideoContextPipeline::analyze(const AnalyzeRequest& request)
         request.lang, request.prompt_mode, frame_times, segments, flat_transcript,
         result.duration_sec);
     const float temperature = request.temperature.value_or(-1.0f);
+    const int max_new_tokens =
+        request.max_tokens > 0 ? request.max_tokens : config_.default_max_tokens;
+    report({.stage = std::string(kJobStageGenerating),
+            .generate_tokens = 0,
+            .max_new_tokens = max_new_tokens,
+            .model_load_done = true,
+            .transcript_done = skip_asr || prep.transcript.status == "ok" ||
+                               prep.transcript.status == "skipped" ||
+                               prep.transcript.status == "provided"});
     {
         const auto t0 = Clock::now();
         llm_.clearKvCache();
@@ -494,6 +529,11 @@ AnalyzeResult VideoContextPipeline::analyze(const AnalyzeRequest& request)
         result.metrics["llm_generate_ms"] = elapsedMs(t0);
         result.metrics["max_new_tokens"] = llm_.lastMaxNewTokens();
         result.metrics["generate_tokens"] = llm_.lastGenerateTokens();
+        report({.stage = std::string(kJobStageGenerating),
+                .generate_tokens = llm_.lastGenerateTokens(),
+                .max_new_tokens = llm_.lastMaxNewTokens(),
+                .model_load_done = true,
+                .transcript_done = true});
         if (llm_.lastTruncatedByMaxTokens()) {
             result.metrics["truncated"] = 1;
         }

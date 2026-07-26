@@ -63,6 +63,9 @@ std::string base64Decode(const std::string& input)
 nlohmann::json analyzeResultToJson(const AnalyzeResult& result)
 {
     nlohmann::json j;
+    if (!result.job_id.empty()) {
+        j["job_id"] = result.job_id;
+    }
     j["model"] = result.model;
     j["description"] = result.description;
     j["transcript"] = {{"text", result.transcript.text}, {"status", result.transcript.status}};

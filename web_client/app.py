@@ -46,6 +46,25 @@ def model_label(model_id: str) -> str:
     return model_id
 
 
+@app.route("/api/jobs/<job_id>", methods=["GET"])
+def api_job_progress(job_id: str):
+    try:
+        r = requests.get(
+            f"{API_BASE}/v1/jobs/{job_id}",
+            headers=api_headers(),
+            timeout=3,
+        )
+        if r.ok:
+            return r.json(), 200
+        try:
+            body = r.json()
+        except ValueError:
+            body = {"error": r.text[:500]}
+        return body, r.status_code
+    except requests.RequestException as exc:
+        return {"error": str(exc)}, 502
+
+
 @app.route("/api/status", methods=["GET"])
 def api_status():
     try:

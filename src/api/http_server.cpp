@@ -17,6 +17,7 @@
 #include "api/openai_handlers.hpp"
 #include "api/auth.hpp"
 #include "core/subprocess.hpp"
+#include "runtime/job_progress.hpp"
 
 namespace vlm {
 
@@ -130,14 +131,20 @@ AnalyzeResult HttpServer::runInference(AnalyzeRequest request)
         std::filesystem::path video_path;
         std::filesystem::path workdir;
         bool started = false;
+        bool finished = false;
         ~JobGuard()
         {
-            if (started && state) {
-                state->onJobFinished();
+            if (started && state && !finished) {
+                state->onJobFinished(false, "job interrupted");
             }
             removeWorkFileIfOwned(video_path, workdir);
         }
     } guard{state_.get(), video_path, config_.workdir, false};
+
+    request.job_id = job_id;
+    request.on_progress = [this, job_id](const JobProgressUpdate& update) {
+        state_->updateJobProgress(job_id, update);
+    };
 
     state_->onJobStarted(job_id, request.model);
     guard.started = true;
@@ -146,13 +153,18 @@ AnalyzeResult HttpServer::runInference(AnalyzeRequest request)
     try {
         result = pipeline_->analyze(request);
     } catch (const std::exception& e) {
+        result.job_id = job_id;
         result.error = e.what();
         std::cerr << '[' << job_id << "] analyze exception: " << e.what() << '\n';
     } catch (...) {
+        result.job_id = job_id;
         result.error = "Unknown analyze failure";
         std::cerr << '[' << job_id << "] analyze unknown exception" << '\n';
     }
     state_->setLoadedModelId(pipeline_->loadedModelId());
+    state_->onJobFinished(result.ok(), result.error);
+    guard.finished = true;
+    result.job_id = job_id;
 
     const double wall_ms =
         std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - wall_start)
@@ -202,7 +214,8 @@ void HttpServer::run()
     svr.set_payload_max_length(kMaxUploadBytes);
 
     svr.set_logger([](const httplib::Request& req, const httplib::Response& res) {
-        if (req.path == "/health" || req.path == "/ready" || req.path == "/v1/status") {
+        if (req.path == "/health" || req.path == "/ready" || req.path == "/v1/status"
+            || req.path.rfind("/v1/jobs/", 0) == 0) {
             return;
         }
         std::cerr << req.method << ' ' << req.path << " -> " << res.status << '\n';
@@ -242,6 +255,28 @@ void HttpServer::run()
 
     svr.Get("/v1/status", [this](const httplib::Request&, httplib::Response& res) {
         res.set_content(statusJson(state_->snapshot()).dump(), "application/json");
+    });
+
+    svr.Get(R"(/v1/jobs/([^/]+))", [this](const httplib::Request& req, httplib::Response& res) {
+        if (!state_->isReady()) {
+            res.status = 503;
+            res.set_content(R"({"error":"service starting"})", "application/json");
+            return;
+        }
+        const std::string job_id = req.matches.size() > 1 ? req.matches[1].str() : "";
+        if (job_id.empty()) {
+            res.status = 400;
+            res.set_content(R"({"error":"job id required"})", "application/json");
+            return;
+        }
+        const auto progress = state_->jobProgress(job_id);
+        if (!progress) {
+            res.status = 404;
+            res.set_content(nlohmann::json{{"error", "job not found"}, {"job_id", job_id}}.dump(),
+                            "application/json");
+            return;
+        }
+        res.set_content(jobProgressToJson(*progress).dump(), "application/json");
     });
 
     svr.Get("/v1/models", [this](const httplib::Request&, httplib::Response& res) {

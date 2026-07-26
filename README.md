@@ -65,7 +65,13 @@ curl -s localhost:8080/ready     # readiness (503 пока грузятся мо
 
 `POST /v1/video/analyze` (multipart): `file`, `model` (`qwen3.5-{0.8b,2b,4b}-video`), `frames`, `frame_budget`, `max_tokens`, `lang` (`ru`|`eng`), `prompt_mode`, `enable_thinking`, `temperature`, `transcript` (override ASR).
 
-Ответ: `description`, `transcript` (`status`: `ok`|`stub`|`error`|`skipped`|`provided`), `metrics` (`wall_ms`, `image_prep_ms`, `vision_encode_ms`, …), `frames_used`.
+Ответ: `job_id`, `description`, `transcript` (`status`: `ok`|`stub`|`error`|`skipped`|`provided`), `metrics` (`wall_ms`, `image_prep_ms`, `vision_encode_ms`, …), `frames_used`.
+
+`GET /v1/jobs/{job_id}` — прогресс активного или только что завершённого job (`progress_percent` 0–100, `stage`, `stage_label`, `details`). Пока `POST /v1/video/analyze` синхронный — опрашивайте из другого клиента по `current_job_id` из `/v1/status` или `job_id` из ответа.
+
+```bash
+curl -s localhost:8080/v1/jobs/job-... -H "Authorization: Bearer $VLM_API_KEY" | jq
+```
 
 ```bash
 curl -s localhost:8080/v1/video/analyze \
