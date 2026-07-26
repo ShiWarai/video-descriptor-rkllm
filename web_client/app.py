@@ -155,10 +155,17 @@ def analyze():
         )
 
     if not resp.ok:
+        err_text = resp.text[:500]
+        try:
+            err_json = resp.json()
+            if isinstance(err_json, dict) and err_json.get("error"):
+                err_text = str(err_json["error"])
+        except Exception:
+            pass
         return render_template(
             "result.html",
             ok=False,
-            error=f"API {resp.status_code}: {resp.text[:500]}",
+            error=err_text if resp.status_code == 200 else f"API {resp.status_code}: {err_text}",
             api_base=API_BASE,
         )
 

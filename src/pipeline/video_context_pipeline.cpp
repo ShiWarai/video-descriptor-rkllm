@@ -62,11 +62,15 @@ bool VideoContextPipeline::initialize(std::optional<std::string_view> preload_mo
     return true;
 }
 
-bool VideoContextPipeline::ensureModel(std::string_view model_id)
+bool VideoContextPipeline::ensureModel(std::string_view model_id, std::string* error_out)
 {
     const auto resolved = registry_.resolveId(model_id);
     if (!resolved) {
-        std::cerr << "Unknown model: " << model_id << '\n';
+        const std::string msg = "Unknown model: " + std::string(model_id);
+        std::cerr << msg << '\n';
+        if (error_out) {
+            *error_out = msg;
+        }
         return false;
     }
 
@@ -74,45 +78,55 @@ bool VideoContextPipeline::ensureModel(std::string_view model_id)
         return true;
     }
 
+    const ModelSpec* spec = registry_.find(*resolved);
+    if (!spec) {
+        if (error_out) {
+            *error_out = "Model spec not found: " + *resolved;
+        }
+        return false;
+    }
+
+    std::string ram_reason;
+    const int workers = planVisionWorkers(*resolved, &ram_reason);
+    if (workers <= 0) {
+        std::cerr << "Refusing to load model " << *resolved << ": " << ram_reason << '\n';
+        if (config_.verbose) {
+            std::cerr << "  hint: use a smaller model or raise pod memory limits / free node RAM\n";
+        }
+        if (error_out) {
+            *error_out = ram_reason;
+        }
+        // Keep currently loaded model (if any) — do not unload on refuse.
+        return false;
+    }
+
     if (config_.verbose) {
         std::cerr << "Loading model: " << *resolved;
         if (!loaded_model_id_.empty()) {
             std::cerr << " (replacing " << loaded_model_id_ << ')';
         }
-        std::cerr << '\n';
-    }
-
-    vision_.unload();
-    llm_.unload();
-#if defined(__GLIBC__)
-    malloc_trim(0);
-#endif
-
-    const ModelSpec* spec = registry_.find(*resolved);
-    if (!spec) {
-        return false;
-    }
-
-    const std::uint64_t estimated = estimateModelRamBytes(
-        spec->llm_model_path, spec->vision_model_path, config_.default_context,
-        VisionEncoder::kWorkerCount);
-    std::string ram_reason;
-    if (!hasEnoughRamForModel(estimated, &ram_reason)) {
-        std::cerr << "Refusing to load model " << *resolved << ": " << ram_reason << '\n';
-        if (config_.verbose) {
-            std::cerr << "  hint: use a smaller model or raise pod memory limits / free node RAM\n";
-        }
-        return false;
-    }
-    if (config_.verbose) {
+        std::cerr << " with " << workers << " vision worker(s)\n";
         if (const auto avail = readMemAvailableKb()) {
-            std::cerr << "memory: estimated model RSS ~" << (estimated / (1024 * 1024))
+            const auto est = estimateModelRamBytes(spec->llm_model_path, spec->vision_model_path,
+                                                   config_.default_context, workers);
+            std::cerr << "memory: estimated model RSS ~" << (est / (1024 * 1024))
                       << " MiB, MemAvailable ~" << (*avail / 1024) << " MiB\n";
         }
     }
 
-    if (!vision_.load(spec->vision_model_path, config_.verbose)) {
-        std::cerr << "Failed to load vision model for " << spec->id << '\n';
+    vision_.unload();
+    llm_.unload();
+    loaded_model_id_.clear();
+#if defined(__GLIBC__)
+    malloc_trim(0);
+#endif
+
+    if (!vision_.load(spec->vision_model_path, config_.verbose, workers)) {
+        const std::string msg = "Failed to load vision model for " + spec->id;
+        std::cerr << msg << '\n';
+        if (error_out) {
+            *error_out = msg;
+        }
         return false;
     }
     const int top_k = spec->top_k.value_or(config_.top_k);
@@ -124,14 +138,53 @@ bool VideoContextPipeline::ensureModel(std::string_view model_id)
                                      config_.thinking_presence_penalty);
     if (!llm_.load(spec->llm_model_path, config_.default_max_tokens, config_.default_context,
                    config_.default_lang, config_.enable_thinking, config_.verbose)) {
-        std::cerr << "Failed to load LLM for " << spec->id << '\n';
+        const std::string msg = "Failed to load LLM for " + spec->id;
+        std::cerr << msg << '\n';
         vision_.unload();
+        if (error_out) {
+            *error_out = msg;
+        }
         return false;
     }
 
     loaded_model_id_ = spec->id;
-    std::cerr << "Model loaded: " << loaded_model_id_ << '\n';
+    std::cerr << "Model loaded: " << loaded_model_id_ << " (vision workers=" << workers << ")\n";
     return true;
+}
+
+int VideoContextPipeline::planVisionWorkers(std::string_view model_id,
+                                            std::string* error_out) const
+{
+    const auto resolved = registry_.resolveId(model_id);
+    if (!resolved) {
+        if (error_out) {
+            *error_out = "Unknown model: " + std::string(model_id);
+        }
+        return 0;
+    }
+    if (loaded_model_id_ == *resolved && vision_.loaded() && llm_.loaded()) {
+        return vision_.workerCount();
+    }
+    const ModelSpec* spec = registry_.find(*resolved);
+    if (!spec) {
+        if (error_out) {
+            *error_out = "Model spec not found: " + *resolved;
+        }
+        return 0;
+    }
+
+    std::uint64_t credit = 0;
+    if (!loaded_model_id_.empty() && loaded_model_id_ != *resolved && vision_.loaded() &&
+        llm_.loaded()) {
+        if (const ModelSpec* cur = registry_.find(loaded_model_id_)) {
+            credit = estimateModelRamBytes(cur->llm_model_path, cur->vision_model_path,
+                                           config_.default_context, vision_.workerCount());
+        }
+    }
+
+    return pickVisionWorkerCount(spec->llm_model_path, spec->vision_model_path,
+                                 config_.default_context, VisionEncoder::kWorkerCount, credit,
+                                 error_out);
 }
 
 void VideoContextPipeline::releaseModels()
@@ -219,6 +272,16 @@ AnalyzeResult VideoContextPipeline::analyze(const AnalyzeRequest& request)
     result.frame_budget = budget;
     result.frames_capped_by_context = effective < request.max_frames;
 
+    // Fail fast before extract/whisper: avoids ~minute UI hang when model cannot fit.
+    {
+        std::string ram_reason;
+        if (planVisionWorkers(model_id, &ram_reason) <= 0) {
+            std::cerr << "Refusing analyze for " << model_id << ": " << ram_reason << '\n';
+            result.error = ram_reason;
+            return finish();
+        }
+    }
+
     struct PrepState {
         std::mutex mu;
         std::condition_variable cv;
@@ -230,6 +293,7 @@ AnalyzeResult VideoContextPipeline::analyze(const AnalyzeRequest& request)
         std::atomic<bool> model_load_finished{false};
         std::atomic<bool> encode_abort{false};
         bool model_ok = false;
+        std::string load_error;
         double model_load_ms = 0;
         double extract_ms = 0;
         double transcript_ms = 0;
@@ -262,11 +326,16 @@ AnalyzeResult VideoContextPipeline::analyze(const AnalyzeRequest& request)
 
     auto model_fut = std::async(std::launch::async, [&] {
         const auto t0 = Clock::now();
-        const bool ok = ensureModel(model_id);
+        std::string load_error;
+        const bool ok = ensureModel(model_id, &load_error);
         prep.model_load_ms = elapsedMs(t0);
         prep.model_ok = ok;
         prep.model_ready = ok;
         prep.model_load_finished = true;
+        if (!ok && !load_error.empty()) {
+            std::lock_guard lock(prep.mu);
+            prep.load_error = std::move(load_error);
+        }
         prep.cv.notify_all();
         return ok;
     });
@@ -356,7 +425,8 @@ AnalyzeResult VideoContextPipeline::analyze(const AnalyzeRequest& request)
         result.metrics["audio_extract_ms"] = prep.transcript.audio_extract_ms;
         result.metrics["whisper_ms"] = prep.transcript.whisper_ms;
         result.transcript = std::move(prep.transcript);
-        result.error = "Failed to load model: " + model_id;
+        result.error = prep.load_error.empty() ? ("Failed to load model: " + model_id)
+                                               : prep.load_error;
         return finish();
     }
 

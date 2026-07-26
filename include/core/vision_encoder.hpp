@@ -54,9 +54,12 @@ public:
     VisionEncoder(VisionEncoder&&) = delete;
     VisionEncoder& operator=(VisionEncoder&&) = delete;
 
-    [[nodiscard]] bool load(const std::string& model_path, bool verbose = false);
+    /** Load vision pack with worker_count contexts (1..kWorkerCount). If fewer than 3, last worker uses NPU AUTO. */
+    [[nodiscard]] bool load(const std::string& model_path, bool verbose = false,
+                            int worker_count = kWorkerCount);
     void unload();
     [[nodiscard]] bool loaded() const noexcept;
+    [[nodiscard]] int workerCount() const noexcept { return worker_count_; }
 
     [[nodiscard]] const VisionModelInfo& modelInfo() const noexcept { return info_; }
 
@@ -67,7 +70,7 @@ public:
                                     VisionProgressCallback progress = nullptr);
 
     /**
-     * Parallel encode from a shared queue (3 RKNN contexts on CORE_0/1/2).
+     * Parallel encode from a shared queue (one RKNN context per active worker / NPU core).
      * Embeddings are assembled in ascending frame index order; failed frames are skipped.
      */
     [[nodiscard]] int encodeStreaming(VisionEncodeQueue& queue, int total_hint,
@@ -89,6 +92,7 @@ private:
     };
 
     std::array<WorkerSlot, kWorkerCount> workers_{};
+    int worker_count_ = 0;
     rknn_input_output_num io_num_{};
     std::vector<rknn_tensor_attr> input_attrs_;
     std::vector<rknn_tensor_attr> output_attrs_;
@@ -98,8 +102,9 @@ private:
     std::size_t frame_count_ = 0;
     bool verbose_ = false;
 
-    [[nodiscard]] bool initFromPath(std::string_view model_path);
-    [[nodiscard]] bool initWorker(WorkerSlot& worker, std::string_view model_path);
+    [[nodiscard]] bool initFromPath(std::string_view model_path, int worker_count);
+    [[nodiscard]] bool initWorker(WorkerSlot& worker, std::string_view model_path,
+                                  rknn_core_mask core_mask);
     void destroyWorkers();
     void queryModelInfoFromPrimary();
     [[nodiscard]] std::size_t floatsPerImage() const;

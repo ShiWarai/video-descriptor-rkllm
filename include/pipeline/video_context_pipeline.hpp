@@ -36,7 +36,9 @@ private:
     std::string loaded_model_id_;
     bool ready_ = false;
 
-    [[nodiscard]] bool ensureModel(std::string_view model_id);
+    [[nodiscard]] bool ensureModel(std::string_view model_id, std::string* error_out = nullptr);
+    /** Returns vision worker count (1..3) that fits, or 0 if model cannot be loaded. */
+    [[nodiscard]] int planVisionWorkers(std::string_view model_id, std::string* error_out = nullptr) const;
     void releaseModels();
     [[nodiscard]] int resolveFrameBudget(const AnalyzeRequest& request) const;
     [[nodiscard]] int effectiveMaxFrames(const AnalyzeRequest& request) const;

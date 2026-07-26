@@ -14,6 +14,38 @@ constexpr std::array<rknn_core_mask, VisionEncoder::kWorkerCount> kWorkerCoreMas
     RKNN_NPU_CORE_0, RKNN_NPU_CORE_1, RKNN_NPU_CORE_2,
 };
 
+/** Pin workers 0..n-2 to dedicated cores; last worker gets AUTO to use leftover NPU cores. */
+[[nodiscard]] rknn_core_mask coreMaskForWorker(int worker_index, int worker_count)
+{
+    if (worker_count >= VisionEncoder::kWorkerCount) {
+        return kWorkerCoreMasks[static_cast<std::size_t>(worker_index)];
+    }
+    if (worker_index == worker_count - 1) {
+        return RKNN_NPU_CORE_AUTO;
+    }
+    return kWorkerCoreMasks[static_cast<std::size_t>(worker_index)];
+}
+
+const char* coreMaskName(rknn_core_mask mask)
+{
+    switch (mask) {
+    case RKNN_NPU_CORE_AUTO:
+        return "AUTO";
+    case RKNN_NPU_CORE_0:
+        return "CORE_0";
+    case RKNN_NPU_CORE_1:
+        return "CORE_1";
+    case RKNN_NPU_CORE_2:
+        return "CORE_2";
+    case RKNN_NPU_CORE_0_1:
+        return "CORE_0_1";
+    case RKNN_NPU_CORE_0_1_2:
+        return "CORE_0_1_2";
+    default:
+        return "OTHER";
+    }
+}
+
 }  // namespace
 
 VisionEncoder::VisionEncoder() = default;
@@ -36,6 +68,7 @@ void VisionEncoder::destroyWorkers()
             worker.ctx = 0;
         }
     }
+    worker_count_ = 0;
 }
 
 void VisionEncoder::unload()
@@ -57,10 +90,11 @@ void VisionEncoder::dumpTensorAttr(const rknn_tensor_attr& attr) const
               << ", " << attr.dims[3] << "]\n";
 }
 
-bool VisionEncoder::initWorker(WorkerSlot& worker, std::string_view model_path)
+bool VisionEncoder::initWorker(WorkerSlot& worker, std::string_view model_path,
+                               rknn_core_mask core_mask)
 {
     const std::string path(model_path);
-    worker.core_mask = kWorkerCoreMasks[&worker - workers_.data()];
+    worker.core_mask = core_mask;
     int ret = rknn_init(&worker.ctx, const_cast<char*>(path.c_str()), 0, 0, nullptr);
     if (ret < 0) {
         std::cerr << "rknn_init failed for core mask " << worker.core_mask << ": " << ret << '\n';
@@ -116,23 +150,36 @@ void VisionEncoder::queryModelInfoFromPrimary()
     }
 }
 
-bool VisionEncoder::initFromPath(std::string_view model_path)
+bool VisionEncoder::initFromPath(std::string_view model_path, int worker_count)
 {
-    for (auto& worker : workers_) {
-        if (!initWorker(worker, model_path)) {
+    const int n = std::clamp(worker_count, 1, kWorkerCount);
+    for (int i = 0; i < n; ++i) {
+        const rknn_core_mask mask = coreMaskForWorker(i, n);
+        if (!initWorker(workers_[static_cast<std::size_t>(i)], model_path, mask)) {
             destroyWorkers();
             return false;
         }
     }
+    worker_count_ = n;
     queryModelInfoFromPrimary();
+    if (verbose_) {
+        std::cerr << "vision: " << worker_count_ << " RKNN worker(s):";
+        for (int i = 0; i < worker_count_; ++i) {
+            std::cerr << ' ' << coreMaskName(workers_[static_cast<std::size_t>(i)].core_mask);
+        }
+        if (worker_count_ < kWorkerCount) {
+            std::cerr << " (last=AUTO to use remaining NPU cores)";
+        }
+        std::cerr << '\n';
+    }
     return true;
 }
 
-bool VisionEncoder::load(const std::string& model_path, bool verbose)
+bool VisionEncoder::load(const std::string& model_path, bool verbose, int worker_count)
 {
     unload();
     verbose_ = verbose;
-    return initFromPath(model_path);
+    return initFromPath(model_path, worker_count);
 }
 
 int VisionEncoder::computeFrameBudget(int context_len, int max_new_tokens, int prompt_reserve) const
@@ -293,9 +340,13 @@ int VisionEncoder::encodeStreaming(VisionEncodeQueue& queue, int total_hint,
         }
     };
 
+    const int n = std::max(1, worker_count_);
     std::vector<std::thread> threads;
-    threads.reserve(kWorkerCount);
-    for (int i = 0; i < kWorkerCount; ++i) {
+    threads.reserve(static_cast<std::size_t>(n));
+    for (int i = 0; i < n; ++i) {
+        if (workers_[static_cast<std::size_t>(i)].ctx == 0) {
+            continue;
+        }
         threads.emplace_back(worker_fn, i);
     }
     for (auto& thread : threads) {

@@ -1,5 +1,6 @@
 #include "core/system_memory.hpp"
 
+#include <algorithm>
 #include <fstream>
 #include <sstream>
 #include <string>
@@ -67,7 +68,7 @@ std::uint64_t estimateModelRamBytes(std::string_view llm_model_path,
         total += static_cast<std::uint64_t>(*llm * 1.10);
     }
     if (const auto vision = fileSizeBytes(vision_model_path)) {
-        // Three RKNN contexts each load the vision pack.
+        // Each RKNN context loads a vision pack (last worker may be AUTO when count < 3).
         total += static_cast<std::uint64_t>(*vision) *
                  static_cast<std::uint64_t>(std::max(1, vision_worker_count)) * 1.15;
     }
@@ -76,6 +77,39 @@ std::uint64_t estimateModelRamBytes(std::string_view llm_model_path,
         total += static_cast<std::uint64_t>(context_len) * 80 * 1024;
     }
     return total;
+}
+
+int pickVisionWorkerCount(std::string_view llm_model_path, std::string_view vision_model_path,
+                          int context_len, int max_workers, std::uint64_t credit_bytes,
+                          std::string* reason)
+{
+    const int capped = std::clamp(max_workers, 1, 3);
+    const auto avail_kb = readMemAvailableKb();
+    if (!avail_kb) {
+        return capped;
+    }
+    const std::uint64_t avail_bytes = *avail_kb * 1024 + credit_bytes;
+
+    for (int n = capped; n >= 1; --n) {
+        const std::uint64_t need =
+            estimateModelRamBytes(llm_model_path, vision_model_path, context_len, n);
+        if (avail_bytes >= need) {
+            return n;
+        }
+    }
+
+    if (reason) {
+        const std::uint64_t need1 =
+            estimateModelRamBytes(llm_model_path, vision_model_path, context_len, 1);
+        std::ostringstream oss;
+        oss << "insufficient RAM: need ~" << (need1 / (1024 * 1024))
+            << " MiB even with 1 vision worker, MemAvailable ~" << (*avail_kb / 1024) << " MiB";
+        if (credit_bytes > 0) {
+            oss << " (+" << (credit_bytes / (1024 * 1024)) << " MiB credit from unload)";
+        }
+        *reason = oss.str();
+    }
+    return 0;
 }
 
 bool hasEnoughRamForModel(std::uint64_t required_bytes, std::string* reason)

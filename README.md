@@ -35,7 +35,7 @@ docker compose -f docker-compose.yml -f docker-compose.prerelease.yml pull && do
 flowchart LR
   Video[Video/GIF] --> FrameExt[Frame extract]
   Video --> AudioExt[Audio libav]
-  FrameExt --> RKNN[Vision 3x RKNN]
+  FrameExt --> RKNN[Vision RKNN 1-3x]
   AudioExt --> Whisper[whisper-rknn]
   RKNN --> RKLLM[RKLLM]
   RKLLM --> API[vlm_api_server]
@@ -43,7 +43,7 @@ flowchart LR
   API --> Web[Flask UI]
 ```
 
-Параллельно: **кадры** (libav `h264_rkmpp` + `scale_rkrga` → RGB 448×448) + **аудио** (libav → WAV 16 kHz mono в RAM → whisper-rknn) + **vision encode** (3× RKNN) → multimodal LLM.
+Параллельно: **кадры** (libav `h264_rkmpp` + `scale_rkrga` → RGB 448×448) + **аудио** (libav → WAV 16 kHz mono в RAM → whisper-rknn) + **vision encode** (до **3×** RKNN, адаптивно по RAM) → multimodal LLM.
 
 | Вход | ASR | Кадры |
 |------|-----|-------|
@@ -102,6 +102,8 @@ resources:
 ```
 
 `qwen3.5-4b-video` — отдельная нода **≥12 GiB** RAM (`requests`/`limits` ~7–8Gi), на 8 GiB с k3s не ставить.
+
+**Память:** перед загрузкой модели оценивается RSS (`estimateModelRamBytes`: LLM + N× vision RKNN + KV); при нехватке `MemAvailable` — отказ с `error` в JSON (HTTP 500), **текущая модель не выгружается**. Резерв под систему — через k8s `resources`, не в config. Vision: **3→2→1** RKNN-контекст(ов) по убыванию, пока оценка влезает; при `<3` последний воркер — `RKNN_NPU_CORE_AUTO` (runtime может задействовать несколько ядер NPU).
 
 ## Конфигурация
 
