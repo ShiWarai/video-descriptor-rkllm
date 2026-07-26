@@ -19,8 +19,13 @@ struct VideoInfo {
 /** How many frames to take: min(requested, frames available in the clip). 0 if invalid. */
 [[nodiscard]] int planFrameCount(double duration_sec, double fps, int requested_frames);
 
+/** Evenly spaced sample timestamps (seconds) for up to `requested_frames` frames. */
+[[nodiscard]] std::vector<double> planFrameTimes(double duration_sec, double fps,
+                                                 int requested_frames);
+
 using FrameProgressCallback = std::function<void(int current, int total)>;
-using FrameReadyCallback = std::function<void(RgbFrame frame, int index, int total)>;
+using FrameReadyCallback =
+    std::function<void(RgbFrame frame, int index, int total, double time_sec)>;
 
 class FrameExtractor {
 public:

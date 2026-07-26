@@ -71,7 +71,7 @@ void test_extract_mp4()
     int count = 0;
     const int got = extractor.extractFramesStreaming(
         path.string(), 4,
-        [&](vlm::RgbFrame frame, int index, int total) {
+        [&](vlm::RgbFrame frame, int index, int total, double /*time_sec*/) {
             expect(total > 0, "positive total");
             expect(index >= 0 && index < total, "index in range");
             expect(frame.matches(kVision, kVision), "frame is 448x448 RGB");
@@ -94,7 +94,7 @@ void test_extract_gif()
     vlm::VideoInfo info;
     const int got = extractor.extractFramesStreaming(
         path.string(), 2,
-        [&](vlm::RgbFrame frame, int /*index*/, int /*total*/) {
+        [&](vlm::RgbFrame frame, int /*index*/, int /*total*/, double /*time_sec*/) {
             expect(frame.matches(kVision, kVision), "gif frame size");
         },
         kVision, kVision, nullptr, &info);

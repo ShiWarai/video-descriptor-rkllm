@@ -29,6 +29,7 @@ struct VisionModelInfo {
 
 struct PendingVisionFrame {
     int index = 0;
+    double time_sec = 0;
     RgbFrame frame;
 };
 
@@ -78,6 +79,8 @@ public:
     void clear();
     [[nodiscard]] std::size_t frameCount() const noexcept { return frame_count_; }
     [[nodiscard]] const std::vector<float>& embeddings() const noexcept { return embeddings_; }
+    /** Sample time (seconds) per encoded frame, same order as embeddings. */
+    [[nodiscard]] const std::vector<double>& frameTimes() const noexcept { return frame_times_; }
 
 private:
     struct WorkerSlot {
@@ -91,6 +94,7 @@ private:
     std::vector<rknn_tensor_attr> output_attrs_;
     VisionModelInfo info_;
     std::vector<float> embeddings_;
+    std::vector<double> frame_times_;
     std::size_t frame_count_ = 0;
     bool verbose_ = false;
 
@@ -101,7 +105,8 @@ private:
     [[nodiscard]] std::size_t floatsPerImage() const;
     [[nodiscard]] bool processOneImage(rknn_context ctx, const RgbFrame& rgb,
                                        std::vector<float>& out) const;
-    void assembleEmbeddings(const std::vector<std::optional<std::vector<float>>>& slots);
+    void assembleEmbeddings(
+        const std::vector<std::optional<std::pair<std::vector<float>, double>>>& slots);
     void dumpTensorAttr(const rknn_tensor_attr& attr) const;
 };
 

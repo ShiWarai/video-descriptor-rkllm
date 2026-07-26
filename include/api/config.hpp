@@ -16,6 +16,7 @@ struct ServerConfig {
     std::string host = "0.0.0.0";
     int port = 8080;
     std::string workdir = "/tmp/vlm_work";
+    std::string api_key;
     std::optional<std::string> preload_model_id;
     ModelRegistry registry;
     PipelineConfig pipeline;
@@ -34,6 +35,9 @@ struct ServerConfig {
     if (j.contains("workdir")) {
         cfg.workdir = j["workdir"].get<std::string>();
         cfg.pipeline.workdir = cfg.workdir;
+    }
+    if (j.contains("api_key")) {
+        cfg.api_key = j["api_key"].get<std::string>();
     }
 
     if (j.contains("default_model")) {
@@ -115,14 +119,14 @@ struct ServerConfig {
     if (p.contains("thinking_presence_penalty")) {
         cfg.pipeline.thinking_presence_penalty = p["thinking_presence_penalty"].get<float>();
     }
-    if (p.contains("ffmpeg_bin_path")) {
-        cfg.pipeline.ffmpeg_bin_path = p["ffmpeg_bin_path"].get<std::string>();
-    }
     if (p.contains("workdir")) {
         cfg.pipeline.workdir = p["workdir"].get<std::string>();
     }
     if (p.contains("whisper_url")) {
         cfg.pipeline.whisper_url = p["whisper_url"].get<std::string>();
+    }
+    if (p.contains("whisper_api_key")) {
+        cfg.pipeline.whisper_api_key = p["whisper_api_key"].get<std::string>();
     }
     if (p.contains("enable_thinking")) {
         cfg.pipeline.enable_thinking = p["enable_thinking"].get<bool>();

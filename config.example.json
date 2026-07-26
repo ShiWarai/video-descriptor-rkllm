@@ -2,6 +2,7 @@
   "host": "0.0.0.0",
   "port": 8080,
   "workdir": "/tmp/vlm_work",
+  "api_key": "",
   "default_model": "qwen3.5-0.8b-video",
   "models": [
     {
@@ -47,8 +48,8 @@
     "thinking_temperature": 0.6,
     "thinking_top_p": 0.95,
     "thinking_presence_penalty": 0.0,
-    "ffmpeg_bin_path": "third_party/ffmpeg-rockchip/bin",
     "whisper_url": "",
+    "whisper_api_key": "",
     "enable_thinking": false,
     "verbose": false
   }

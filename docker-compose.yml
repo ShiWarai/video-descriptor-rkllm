@@ -21,7 +21,9 @@ services:
       VLM_DOWNLOAD_MODELS: "${VLM_DOWNLOAD_MODELS:-0}"
       VLM_MODEL_URLS: "${VLM_MODEL_URLS:-}"
       WHISPER_RKNN_URL: "${WHISPER_RKNN_URL:-}"
+      WHISPER_API_KEY: "${WHISPER_API_KEY:-}"
       VLM_VERBOSE: "${VLM_VERBOSE:-1}"
+      VLM_API_KEY: "${VLM_API_KEY:-}"
       # RK3588: pin NPU/CPU/DDR at max on start (see scripts/fix_freq_rk3588.sh). 0 = off.
       VLM_FIX_FREQ: "${VLM_FIX_FREQ:-1}"
       # 0 = do not pin Mali GPU (default: max with NPU/CPU/DDR).
@@ -46,6 +48,7 @@ services:
       - "5000:5000"
     environment:
       VLM_API_URL: http://api:8080
+      VLM_API_KEY: "${VLM_API_KEY:-}"
       WEB_CLIENT_DEBUG: "0"
     depends_on:
       api:

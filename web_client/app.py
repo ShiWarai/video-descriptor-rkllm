@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 import os
+import time
 from pathlib import Path
 
 import requests
@@ -13,13 +14,20 @@ from flask import Flask, render_template, request
 app = Flask(__name__)
 
 API_BASE = os.environ.get("VLM_API_URL", "http://127.0.0.1:8080")
+API_KEY = os.environ.get("VLM_API_KEY", "")
 UPLOAD_MAX_MB = int(os.environ.get("VLM_UPLOAD_MAX_MB", "256"))
 DEBUG = os.environ.get("WEB_CLIENT_DEBUG", "1") != "0"
 
 
+def api_headers() -> dict[str, str]:
+    if API_KEY:
+        return {"Authorization": f"Bearer {API_KEY}"}
+    return {}
+
+
 def fetch_models() -> list[dict]:
     try:
-        r = requests.get(f"{API_BASE}/v1/models", timeout=3)
+        r = requests.get(f"{API_BASE}/v1/models", headers=api_headers(), timeout=3)
         if r.ok:
             return r.json().get("data", [])
     except requests.RequestException:
@@ -41,7 +49,7 @@ def model_label(model_id: str) -> str:
 @app.route("/api/status", methods=["GET"])
 def api_status():
     try:
-        r = requests.get(f"{API_BASE}/v1/status", timeout=3)
+        r = requests.get(f"{API_BASE}/v1/status", headers=api_headers(), timeout=3)
         if r.ok:
             return r.json(), 200
         return {"status": "error", "error": f"API {r.status_code}"}, 502
@@ -53,7 +61,7 @@ def api_status():
 def index():
     status = {}
     try:
-        r = requests.get(f"{API_BASE}/v1/status", timeout=3)
+        r = requests.get(f"{API_BASE}/v1/status", headers=api_headers(), timeout=3)
         if r.ok:
             status = r.json()
     except requests.RequestException:
@@ -88,7 +96,7 @@ def analyze():
             api_base=API_BASE,
         )
 
-    frames = request.form.get("frames", "8")
+    frames = request.form.get("frames", "16")
     frame_budget = request.form.get("frame_budget", "")
     max_tokens = request.form.get("max_tokens", "")
     enable_thinking = request.form.get("enable_thinking", "")
@@ -112,6 +120,7 @@ def analyze():
     if temperature.strip():
         data["temperature"] = temperature.strip()
 
+    client_metrics: dict[str, float] = {}
     try:
         video.stream.seek(0, os.SEEK_END)
         size_mb = video.stream.tell() / (1024 * 1024)
@@ -121,12 +130,15 @@ def analyze():
         if size_mb > UPLOAD_MAX_MB:
             raise ValueError(f"Файл слишком большой ({size_mb:.1f} MB, лимит {UPLOAD_MAX_MB} MB)")
 
+        t_client = time.perf_counter()
         resp = requests.post(
             f"{API_BASE}/v1/video/analyze",
             files={"file": (video.filename, video.stream, video.mimetype or "application/octet-stream")},
             data=data,
+            headers=api_headers(),
             timeout=3600,
         )
+        client_metrics["client_wall_ms"] = (time.perf_counter() - t_client) * 1000.0
     except requests.RequestException as exc:
         return render_template(
             "result.html",
@@ -151,11 +163,17 @@ def analyze():
         )
 
     payload = resp.json()
+    api_wall = (payload.get("metrics") or {}).get("wall_ms")
+    if api_wall is not None and "client_wall_ms" in client_metrics:
+        client_metrics["client_upload_ms"] = max(
+            0.0, client_metrics["client_wall_ms"] - float(api_wall)
+        )
     return render_template(
         "result.html",
         ok=payload.get("error") in (None, ""),
         result=payload,
         result_json=json.dumps(payload, ensure_ascii=False, indent=2),
+        client_metrics=client_metrics,
         api_base=API_BASE,
     )
 

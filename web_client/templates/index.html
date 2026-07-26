@@ -37,9 +37,12 @@
           <label>
             Модель
             <select name="model" required>
+              {% set default_model_id = 'qwen3.5-2b-video' %}
+              {% set has_default_model = models | selectattr('id', 'equalto', default_model_id) | list | length > 0 %}
               {% if models %}
                 {% for m in models %}
-                  <option value="{{ m.id }}" {% if loop.first %}selected{% endif %}>
+                  <option value="{{ m.id }}"
+                    {% if (has_default_model and m.id == default_model_id) or (not has_default_model and loop.first) %}selected{% endif %}>
                     {{ model_label(m.id) }}
                   </option>
                 {% endfor %}
@@ -67,7 +70,7 @@
         <div class="row">
           <label>
             Кадры (max)
-            <input type="number" name="frames" value="8" min="1" max="128">
+            <input type="number" name="frames" value="16" min="1" max="128">
           </label>
           <label>
             Frame budget
@@ -83,8 +86,8 @@
           <label>
             Thinking
             <select name="enable_thinking">
-              <option value="" selected>из config</option>
-              <option value="false">off</option>
+              <option value="">из config</option>
+              <option value="false" selected>off</option>
               <option value="true">on</option>
             </select>
           </label>

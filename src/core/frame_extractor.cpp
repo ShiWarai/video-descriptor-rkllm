@@ -592,6 +592,24 @@ int planFrameCount(double duration_sec, double fps, int requested_frames)
     return std::min(requested_frames, total_frames);
 }
 
+std::vector<double> planFrameTimes(double duration_sec, double fps, int requested_frames)
+{
+    const int target_count = planFrameCount(duration_sec, fps, requested_frames);
+    if (target_count <= 0) {
+        return {};
+    }
+
+    const double total_frames = duration_sec * fps;
+    const double step = total_frames / static_cast<double>(target_count);
+    std::vector<double> times;
+    times.reserve(static_cast<std::size_t>(target_count));
+    for (int i = 0; i < target_count; ++i) {
+        const int frame_idx = static_cast<int>(i * step);
+        times.push_back(frame_idx / fps);
+    }
+    return times;
+}
+
 bool FrameExtractor::probe(std::string_view filename, VideoInfo& info) const
 {
     if (!std::filesystem::exists(filename)) {
@@ -623,7 +641,9 @@ std::vector<RgbFrame> FrameExtractor::extractFrames(std::string_view filename, i
     std::vector<RgbFrame> frames;
     const int got = extractFramesStreaming(
         filename, requested_frames,
-        [&](RgbFrame frame, int /*index*/, int /*total*/) { frames.push_back(std::move(frame)); },
+        [&](RgbFrame frame, int /*index*/, int /*total*/, double /*time_sec*/) {
+            frames.push_back(std::move(frame));
+        },
         target_w, target_h, progress, out_info);
     (void)got;
     return frames;
@@ -657,20 +677,14 @@ int FrameExtractor::extractFramesStreaming(std::string_view filename, int reques
         return 0;
     }
 
-    const double total_frames = info.duration_sec * info.fps;
-    const double step = total_frames / static_cast<double>(target_count);
-    std::vector<double> times;
-    times.reserve(static_cast<std::size_t>(target_count));
-    for (int i = 0; i < target_count; ++i) {
-        const int frame_idx = static_cast<int>(i * step);
-        times.push_back(frame_idx / info.fps);
-    }
+    const std::vector<double> times =
+        planFrameTimes(info.duration_sec, info.fps, requested_frames);
 
     const int extracted = session.extractAtTimes(times, [&](RgbFrame& frame, int index) {
         if (progress) {
             progress(index, target_count);
         }
-        on_frame(std::move(frame), index, target_count);
+        on_frame(std::move(frame), index, target_count, times[static_cast<std::size_t>(index)]);
         return true;
     });
 

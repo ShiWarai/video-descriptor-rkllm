@@ -4,12 +4,20 @@
 #include <map>
 #include <optional>
 #include <string>
+#include <vector>
 
 namespace vlm {
+
+struct TranscriptSegment {
+    double start = 0;
+    double end = 0;
+    std::string text;
+};
 
 struct TranscriptResult {
     std::string text;
     std::string status;  // "provided" | "stub" | "ok" | "error" | "skipped" (gif / no audio)
+    std::vector<TranscriptSegment> segments;  // empty if whisper timestamps unavailable
     std::optional<std::string> language;
     double audio_extract_ms = 0;
     double whisper_ms = 0;
@@ -61,9 +69,9 @@ struct PipelineConfig {
     float thinking_temperature = 0.6f;
     float thinking_top_p = 0.95f;
     float thinking_presence_penalty = 0.0f;
-    std::string ffmpeg_bin_path = "third_party/ffmpeg-rockchip/bin";
     std::string workdir = "/tmp/vlm_work";
     std::string whisper_url;
+    std::string whisper_api_key;  // Bearer for whisper-rknn /transcribe; empty = no auth
     bool enable_thinking = false;
     bool verbose = false;
 };

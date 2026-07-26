@@ -66,6 +66,14 @@ nlohmann::json analyzeResultToJson(const AnalyzeResult& result)
     j["model"] = result.model;
     j["description"] = result.description;
     j["transcript"] = {{"text", result.transcript.text}, {"status", result.transcript.status}};
+    if (!result.transcript.segments.empty()) {
+        nlohmann::json segments = nlohmann::json::array();
+        for (const auto& segment : result.transcript.segments) {
+            segments.push_back(
+                {{"start", segment.start}, {"end", segment.end}, {"text", segment.text}});
+        }
+        j["transcript"]["segments"] = std::move(segments);
+    }
     if (result.transcript.language) {
         j["transcript"]["language"] = *result.transcript.language;
     }

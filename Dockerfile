@@ -36,8 +36,6 @@ RUN cmake -B build -DCMAKE_BUILD_TYPE=Release \
     && strip --strip-unneeded \
         build/vlm_api_server \
         third_party/lib/*.so \
-        third_party/ffmpeg-rockchip/bin/ffmpeg \
-        third_party/ffmpeg-rockchip/bin/ffprobe \
         third_party/ffmpeg-rockchip/lib/*.so*
 
 FROM ubuntu:24.04 AS runtime
@@ -69,7 +67,6 @@ WORKDIR /app
 
 COPY --from=builder /app/build/vlm_api_server /app/build/vlm_api_server
 COPY --from=builder /app/third_party/lib /app/third_party/lib
-COPY --from=builder /app/third_party/ffmpeg-rockchip/bin /app/third_party/ffmpeg-rockchip/bin
 COPY --from=builder /app/third_party/ffmpeg-rockchip/lib /app/third_party/ffmpeg-rockchip/lib
 COPY config.json /app/config.json
 COPY scripts/docker-entrypoint.sh /app/scripts/docker-entrypoint.sh
@@ -87,7 +84,7 @@ RUN chmod +x /app/scripts/docker-entrypoint.sh /app/scripts/download_models.sh \
        fi
 
 ENV LD_LIBRARY_PATH=/app/third_party/lib:/app/third_party/ffmpeg-rockchip/lib
-ENV PATH=/app/third_party/ffmpeg-rockchip/bin:/app/build:${PATH}
+ENV PATH=/app/build:${PATH}
 
 EXPOSE 8080
 

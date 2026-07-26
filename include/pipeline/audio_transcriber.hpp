@@ -4,6 +4,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <string_view>
 
 #include "types.hpp"
 
@@ -24,18 +25,19 @@ public:
 
 class HttpWhisperTranscriber final : public AudioTranscriber {
 public:
-    HttpWhisperTranscriber(std::string base_url, std::string ffmpeg_bin_path,
-                           std::string workdir);
+    HttpWhisperTranscriber(std::string base_url, std::string api_key = {});
 
     TranscriptResult transcribe(const std::filesystem::path& video_path,
                                 const std::optional<std::string>& override_text) override;
 
 private:
     std::string base_url_;
-    std::string ffmpeg_bin_path_;
-    std::string workdir_;
+    std::string api_key_;
 };
 
 [[nodiscard]] std::unique_ptr<AudioTranscriber> makeAudioTranscriber(const PipelineConfig& config);
+
+/** Parse whisper-rknn /transcribe JSON (text + optional segments). */
+[[nodiscard]] bool parseWhisperTranscribeResponse(std::string_view body, TranscriptResult& result);
 
 }  // namespace vlm

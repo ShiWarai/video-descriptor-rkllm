@@ -206,15 +206,18 @@ bool VisionEncoder::processOneImage(rknn_context ctx, const RgbFrame& rgb,
     return true;
 }
 
-void VisionEncoder::assembleEmbeddings(const std::vector<std::optional<std::vector<float>>>& slots)
+void VisionEncoder::assembleEmbeddings(
+    const std::vector<std::optional<std::pair<std::vector<float>, double>>>& slots)
 {
     embeddings_.clear();
+    frame_times_.clear();
     frame_count_ = 0;
     for (const auto& slot : slots) {
         if (!slot) {
             continue;
         }
-        embeddings_.insert(embeddings_.end(), slot->begin(), slot->end());
+        embeddings_.insert(embeddings_.end(), slot->first.begin(), slot->first.end());
+        frame_times_.push_back(slot->second);
         ++frame_count_;
     }
 }
@@ -228,7 +231,7 @@ int VisionEncoder::encodeStreaming(VisionEncodeQueue& queue, int total_hint,
 
     clear();
 
-    std::vector<std::optional<std::vector<float>>> slots;
+    std::vector<std::optional<std::pair<std::vector<float>, double>>> slots;
     std::mutex slots_mu;
     int encoded = 0;
     const int progress_total = std::max(total_hint, 1);
@@ -241,6 +244,7 @@ int VisionEncoder::encodeStreaming(VisionEncodeQueue& queue, int total_hint,
             }
 
             int index = 0;
+            double time_sec = 0;
             RgbFrame frame;
             {
                 std::unique_lock lock(queue.mu);
@@ -259,6 +263,7 @@ int VisionEncoder::encodeStreaming(VisionEncodeQueue& queue, int total_hint,
                 PendingVisionFrame item = std::move(queue.pending.front());
                 queue.pending.pop_front();
                 index = item.index;
+                time_sec = item.time_sec;
                 frame = std::move(item.frame);
             }
 
@@ -278,7 +283,8 @@ int VisionEncoder::encodeStreaming(VisionEncodeQueue& queue, int total_hint,
                 if (index >= static_cast<int>(slots.size())) {
                     slots.resize(static_cast<std::size_t>(index) + 1);
                 }
-                slots[static_cast<std::size_t>(index)] = std::move(embedding);
+                slots[static_cast<std::size_t>(index)] =
+                    std::make_pair(std::move(embedding), time_sec);
                 ++encoded;
                 if (progress) {
                     progress(encoded, progress_total);
@@ -338,6 +344,8 @@ void VisionEncoder::clear()
 {
     embeddings_.clear();
     embeddings_.shrink_to_fit();
+    frame_times_.clear();
+    frame_times_.shrink_to_fit();
     frame_count_ = 0;
 }
 

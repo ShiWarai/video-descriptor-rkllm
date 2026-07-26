@@ -90,7 +90,8 @@ void test_config_whisper_url_and_workdir()
         {"id": "m1", "vision_model": "v.rknn", "llm_model": "l.rkllm"}
       ],
       "pipeline": {
-        "whisper_url": "http://whisper-rknn.whisper-rknn.svc.cluster.local:8080"
+        "whisper_url": "http://whisper-rknn.whisper-rknn.svc.cluster.local:8080",
+        "whisper_api_key": "secret-whisper"
       }
     })";
 
@@ -102,6 +103,7 @@ void test_config_whisper_url_and_workdir()
     expect(cfg.pipeline.whisper_url ==
                "http://whisper-rknn.whisper-rknn.svc.cluster.local:8080",
            "pipeline whisper_url");
+    expect(cfg.pipeline.whisper_api_key == "secret-whisper", "pipeline whisper_api_key");
 }
 
 }  // namespace

@@ -1,46 +1,31 @@
 # ffmpeg-rockchip (vendored)
 
-Prebuilt binaries and headers for RK3588 hardware decode (rkmpp/rkrga).
+Prebuilt **libav** libraries and headers for RK3588 (rkmpp/rkrga decode in-process).
 
 | Field | Value |
 |-------|-------|
 | Upstream | [nyanmisaka/ffmpeg-rockchip](https://github.com/nyanmisaka/ffmpeg-rockchip) |
-| Build tree | `/root/dev/ffmpeg` (host) |
 | Platform | linux/arm64 (RK3588) |
-
-## Configure
-
-```text
---prefix=/usr/local
---enable-gpl --enable-version3
---enable-libdrm --enable-rkmpp --enable-rkrga
---enable-libopus --enable-libmp3lame --enable-libvorbis --enable-openssl
---enable-shared --disable-static --disable-doc
-```
 
 ## Contents
 
-- `include/` — vendored libav* headers (for C++ build against pinned `.so` versions)
-- `bin/ffmpeg`, `bin/ffprobe` — from `/usr/local/bin` (audio extract for ASR; frame extract uses libav API in-process)
-- `lib/libav*.so*`, `lib/libsw*.so*` — FFmpeg shared libraries
-- `lib/librga.so*`, `lib/librockchip_mpp.so*` — Rockchip MPP/RGA runtime
+- `include/` — vendored libav* headers (pinned `.so` versions)
+- `lib/libav*.so*`, `lib/libsw*.so*`, `lib/librga.so*`, `lib/librockchip_mpp.so*` — runtime for linked binaries
+- `bin/ffmpeg`, `bin/ffprobe` — optional dev tools (not used by `vlm_api_server` at runtime)
 
-Host/container apt deps: `libdrm2`, `zlib1g`, `libopus0`, `libmp3lame0`, `libvorbis0a`, `libvorbisenc2`, `libssl3t64` (Ubuntu 24.04).
+## In this project
+
+| Path | Use |
+|------|-----|
+| `src/core/frame_extractor.cpp` | Video/GIF frames: libav + rkmpp/rkrga |
+| `src/core/audio_extractor.cpp` | ASR audio: libav demux/decode/swr → WAV in RAM |
+
+No CLI `ffmpeg`/`ffprobe` in the API pipeline or Docker runtime image.
+
+Host/container apt deps: `libdrm2`, `zlib1g`, `libopus0`, `libmp3lame0`, `libvorbis0a`, `libvorbisenc2`, `libssl3t64`.
 
 Builder image additionally needs `-dev` packages for linking: `libdrm-dev`, `libopus-dev`, `libmp3lame-dev`, `libvorbis-dev`, `libssl-dev`.
 
 ## Rebuild (host)
 
-```bash
-cd /root/dev/ffmpeg
-sudo apt-get install -y libopus-dev libmp3lame-dev libvorbis-dev libssl-dev pkg-config
-./configure --prefix=/usr/local \
-  --enable-gpl --enable-version3 \
-  --enable-libdrm --enable-rkmpp --enable-rkrga \
-  --enable-libopus --enable-libmp3lame --enable-libvorbis --enable-openssl \
-  --enable-shared --disable-static --disable-doc
-make -j"$(nproc)" && sudo make install
-cp -a /usr/local/bin/ffmpeg /usr/local/bin/ffprobe bin/
-cp -a /usr/local/lib/libav*.so* /usr/local/lib/libsw*.so* lib/
-cp -a /usr/local/include/libav{codec,format,filter,util} /usr/local/include/libsw{scale,resample} include/
-```
+See upstream [ffmpeg-rockchip](https://github.com/nyanmisaka/ffmpeg-rockchip). After `make install`, copy `.so` and headers into `lib/` and `include/` as documented in upstream build notes.

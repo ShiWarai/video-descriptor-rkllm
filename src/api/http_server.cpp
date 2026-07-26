@@ -15,6 +15,7 @@
 #include <vector>
 
 #include "api/openai_handlers.hpp"
+#include "api/auth.hpp"
 #include "core/subprocess.hpp"
 
 namespace vlm {
@@ -205,6 +206,27 @@ void HttpServer::run()
             return;
         }
         std::cerr << req.method << ' ' << req.path << " -> " << res.status << '\n';
+    });
+
+    const std::string api_key = config_.api_key;
+    if (!api_key.empty()) {
+        std::cerr << "api auth: Bearer token required for /v1/*\n";
+    }
+
+    svr.set_pre_routing_handler([&api_key](const httplib::Request& req, httplib::Response& res) {
+        if (!authRequiredForPath(req.path)) {
+            return httplib::Server::HandlerResponse::Unhandled;
+        }
+        const std::optional<std::string> token =
+            req.has_header("Authorization")
+                ? parseBearerToken(req.get_header_value("Authorization"))
+                : std::nullopt;
+        if (!isApiKeyValid(token, api_key)) {
+            res.status = 401;
+            res.set_content(unauthorizedErrorJson(), "application/json");
+            return httplib::Server::HandlerResponse::Handled;
+        }
+        return httplib::Server::HandlerResponse::Unhandled;
     });
 
     svr.Get("/health", [this](const httplib::Request&, httplib::Response& res) {
