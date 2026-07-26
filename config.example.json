@@ -9,7 +9,7 @@
       "id": "qwen3.5-0.8b-video",
       "vision_model": "models/qwen3.5-0.8b_vision_rk3588.rknn",
       "llm_model": "models/qwen3.5-0.8b_w8a8_rk3588.rkllm",
-      "temperature": 0.7,
+      "temperature": 0.4,
       "top_k": 20,
       "top_p": 0.8,
       "presence_penalty": 1.5
@@ -18,7 +18,7 @@
       "id": "qwen3.5-2b-video",
       "vision_model": "models/qwen3.5-2b_vision_rk3588.rknn",
       "llm_model": "models/qwen3.5-2b_w8a8_rk3588.rkllm",
-      "temperature": 0.7,
+      "temperature": 0.4,
       "top_k": 20,
       "top_p": 0.8,
       "presence_penalty": 1.5
@@ -27,7 +27,7 @@
       "id": "qwen3.5-4b-video",
       "vision_model": "models/qwen3.5-4b_vision_rk3588.rknn",
       "llm_model": "models/qwen3.5-4b_w8a8_rk3588.rkllm",
-      "temperature": 0.7,
+      "temperature": 0.4,
       "top_k": 20,
       "top_p": 0.8,
       "presence_penalty": 1.5

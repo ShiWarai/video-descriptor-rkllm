@@ -15,16 +15,11 @@ namespace vlm::prompts {
 inline constexpr std::string_view kFramesIntroRu = "Тебе даны кадры из видео <image>";
 inline constexpr std::string_view kFramesIntroEng = "You are given frames from a video <image>";
 
-inline constexpr std::string_view kFramesInterleavedIntroRu =
-    "Тебе даны кадры из видео. Между кадрами указана речь за этот промежуток:";
-inline constexpr std::string_view kFramesInterleavedIntroEng =
-    "You are given frames from a video. Speech between frames is shown for each interval:";
+inline constexpr std::string_view kFramesInterleavedIntroRu = "Тебе даны кадры из видео:";
+inline constexpr std::string_view kFramesInterleavedIntroEng = "You are given frames from a video:";
 
 inline constexpr std::string_view kSpeechPrefixRu = " с речью в видео: \"";
 inline constexpr std::string_view kSpeechPrefixEng = " with speech in the video: \"";
-
-inline constexpr std::string_view kSpeechBetweenRu = "Речь: \"";
-inline constexpr std::string_view kSpeechBetweenEng = "Speech: \"";
 
 inline constexpr std::string_view kTaskSimpleRu = "Опиши кратко и по делу видео.";
 inline constexpr std::string_view kTaskSimpleEng = "Describe the video briefly and to the point.";

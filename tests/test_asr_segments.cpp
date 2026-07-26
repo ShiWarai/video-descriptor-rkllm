@@ -70,11 +70,11 @@ void test_interleaved_prompt()
     const std::string prompt =
         buildUserVisionPrompt("ru", "simple", times, segments, {}, 4.0);
     expect(prompt.find(kFramesInterleavedIntroRu) == 0, "interleaved intro");
-    expect(prompt.find("[0.00s] <image>") != std::string::npos, "first frame tag");
-    expect(prompt.find("Речь: \"фраза A\"") != std::string::npos, "speech after first frame");
-    expect(prompt.find("[1.50s] <image>") != std::string::npos, "second frame tag");
-    expect(prompt.find("Речь: \"фраза B\"") != std::string::npos, "speech after second frame");
-    expect(prompt.find("[3.00s] <image>") != std::string::npos, "third frame tag");
+    expect(prompt.find("<image> \"фраза A\"") != std::string::npos, "first frame + speech");
+    expect(prompt.find("<image>\n") != std::string::npos, "frame without speech");
+    expect(prompt.find("фраза B") != std::string::npos, "second interval speech");
+    expect(prompt.find("[0.00s]") == std::string::npos, "no timestamps");
+    expect(prompt.find("Речь:") == std::string::npos, "no speech label");
     expect(prompt.find(kSpeechPrefixRu) == std::string::npos, "no flat speech prefix");
     expect(prompt.find(kTaskSimpleRu) != std::string::npos, "task at end");
 }
@@ -92,7 +92,7 @@ void test_expand_image_tags()
     const std::string single = "frames <image> task";
     expect(expandImageTags(single, 3) == "frames <image> <image> <image> task", "expand one tag");
 
-    const std::string already = "[0.00s] <image>\n[1.00s] <image>\n";
+    const std::string already = "<image>\n<image>\n";
     expect(expandImageTags(already, 2) == already, "leave pre-placed tags");
 
     expect(expandImageTags("no tags", 2) == "no tags", "unchanged without tags");

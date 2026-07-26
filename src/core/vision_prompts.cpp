@@ -2,7 +2,6 @@
 
 #include <algorithm>
 #include <cmath>
-#include <sstream>
 #include <utility>
 
 namespace vlm::prompts {
@@ -34,15 +33,6 @@ namespace {
         end = std::max(end, segment.end);
     }
     return end;
-}
-
-[[nodiscard]] std::string formatTimestamp(double seconds)
-{
-    std::ostringstream oss;
-    oss.setf(std::ios::fixed);
-    oss.precision(2);
-    oss << '[' << seconds << "s]";
-    return oss.str();
 }
 
 [[nodiscard]] std::string joinTexts(const std::vector<std::string>& parts)
@@ -112,13 +102,13 @@ std::string buildUserVisionPrompt(std::string_view lang_normalized, std::string_
         prompt += '\n';
 
         for (std::size_t i = 0; i < frame_times.size(); ++i) {
-            prompt += formatTimestamp(frame_times[i]);
-            prompt += " <image>\n";
+            prompt += "<image>";
             if (!speech[i].empty()) {
-                prompt += eng ? kSpeechBetweenEng : kSpeechBetweenRu;
+                prompt += " \"";
                 prompt += speech[i];
-                prompt += "\"\n";
+                prompt += '"';
             }
+            prompt += '\n';
         }
 
         prompt += task;
