@@ -11,7 +11,8 @@ Prebuilt **libav** libraries and headers for RK3588 (rkmpp/rkrga decode in-proce
 
 - `include/` — vendored libav* headers (pinned `.so` versions)
 - `lib/libav*.so*`, `lib/libsw*.so*`, `lib/librga.so*`, `lib/librockchip_mpp.so*` — runtime for linked binaries
-- `bin/ffmpeg`, `bin/ffprobe` — optional dev tools (not used by `vlm_api_server` at runtime)
+
+CLI `ffmpeg`/`ffprobe` are not vendored (not used by this project).
 
 ## In this project
 
