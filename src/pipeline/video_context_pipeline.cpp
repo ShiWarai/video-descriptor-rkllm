@@ -330,8 +330,8 @@ AnalyzeResult VideoContextPipeline::analyze(const AnalyzeRequest& request)
         transcript_fut = std::async(std::launch::async, [&] {
             report({.stage = std::string(kJobStageTranscribing)});
             const auto t0 = Clock::now();
-            prep.transcript =
-                transcriber_->transcribe(request.video_path, request.transcript_override);
+            prep.transcript = transcriber_->transcribe(
+                request.video_path, request.transcript_override, request.lang);
             prep.transcript_ms = elapsedMs(t0);
             report({.stage = std::string(kJobStageTranscribing), .transcript_done = true});
         });

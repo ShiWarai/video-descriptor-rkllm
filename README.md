@@ -117,8 +117,8 @@ resources:
 
 | Переменная | Назначение |
 |------------|------------|
-| `WHISPER_RKNN_URL` | ASR; `http://` (LAN) или `https://` (интернет); пусто = stub |
-| `WHISPER_API_KEY` | Bearer для whisper-rknn `/transcribe`; пусто = без auth |
+| `WHISPER_RKNN_URL` | ASR (whisper-rknn NPU или hwdsl2/whisper-server CPU); `http://` (LAN) или `https://` (интернет); пусто = stub |
+| `WHISPER_API_KEY` | Bearer для `POST /v1/audio/transcriptions`; пусто = без auth |
 | `VLM_DOWNLOAD_MODELS` | `0`, `0.8b`, `2b`, `4b`, `all` |
 | `VLM_API_KEY` | Bearer для `/v1/*`; пусто = без auth |
 | `VLM_FIX_FREQ` | NPU+CPU+DDR max (`scripts/fix_freq_rk3588.sh`, нужен `privileged`) |

@@ -148,6 +148,58 @@ void test_prompt_ok_text_without_segments_uses_flat()
            "no interleaved without segments");
 }
 
+void test_parse_whisper_verbose_json()
+{
+    const std::string body = R"({
+        "task": "transcribe",
+        "language": "ru",
+        "duration": 2.5,
+        "text": "привет мир",
+        "segments": [
+            {
+                "id": 0,
+                "seek": 0,
+                "start": 0.0,
+                "end": 1.2,
+                "text": "привет",
+                "tokens": [],
+                "temperature": 0.0,
+                "avg_logprob": 0.0,
+                "compression_ratio": 0.0,
+                "no_speech_prob": 0.0
+            },
+            {
+                "id": 1,
+                "seek": 0,
+                "start": 1.2,
+                "end": 2.5,
+                "text": "мир",
+                "tokens": [],
+                "temperature": 0.0,
+                "avg_logprob": 0.0,
+                "compression_ratio": 0.0,
+                "no_speech_prob": 0.0
+            }
+        ]
+    })";
+
+    vlm::TranscriptResult result;
+    expect(vlm::parseWhisperTranscribeResponse(body, result), "parse verbose_json ok");
+    expect(result.text == "привет мир", "full text");
+    expect(result.language.has_value() && *result.language == "ru", "language");
+    expect(result.segments.size() == 2, "two segments");
+    expect(result.segments[0].text == "привет", "first segment text");
+    expect(result.segments[1].end == 2.5, "second segment end");
+}
+
+void test_parse_whisper_unknown_language_ignored()
+{
+    const std::string body = R"({"text": "hello", "language": "unknown"})";
+    vlm::TranscriptResult result;
+    expect(vlm::parseWhisperTranscribeResponse(body, result), "parse ok");
+    expect(!result.language.has_value(), "unknown language not stored");
+}
+
 }  // namespace
 
 int main()
@@ -162,6 +214,8 @@ int main()
     test_expand_image_tags();
     test_parse_whisper_segments();
     test_parse_whisper_without_segments();
+    test_parse_whisper_verbose_json();
+    test_parse_whisper_unknown_language_ignored();
     std::cout << "test_asr_segments: ok\n";
     return 0;
 }
