@@ -191,11 +191,6 @@ def analyze():
         )
 
     payload = resp.json()
-    api_wall = (payload.get("metrics") or {}).get("wall_ms")
-    if api_wall is not None and "client_wall_ms" in client_metrics:
-        client_metrics["client_upload_ms"] = max(
-            0.0, client_metrics["client_wall_ms"] - float(api_wall)
-        )
     return render_template(
         "result.html",
         ok=payload.get("error") in (None, ""),

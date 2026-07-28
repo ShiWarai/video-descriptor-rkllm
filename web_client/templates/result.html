@@ -40,9 +40,6 @@
               Запрос из браузера:
               <strong>{{ '%.1f'|format(client_metrics.client_wall_ms) }} ms</strong>
               ({{ '%.2f'|format(client_metrics.client_wall_ms / 1000) }} s)
-              {% if client_metrics.get('client_upload_ms') is not none %}
-                · загрузка ≈ {{ '%.1f'|format(client_metrics.client_upload_ms) }} ms
-              {% endif %}
             </p>
           {% endif %}
           {% if wall is not none %}
