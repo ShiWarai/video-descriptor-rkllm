@@ -1,0 +1,119 @@
+# Distributed VLM stack on one RK3588 host (smoke / k3s prep).
+# On a single board prefer monolith: docker compose up -d
+#
+# docker network create vlm_rkllm_default
+# cp .env.example .env
+# docker compose -f docker-compose.distributed.yml up -d --build
+
+name: video-descriptor-rkllm-distributed
+
+x-common-env: &common-env
+  VLM_DOWNLOAD_MODELS: ${VLM_DOWNLOAD_MODELS:-0}
+  VLM_MODEL_URLS: ${VLM_MODEL_URLS:-}
+  WHISPER_RKNN_URL: ${WHISPER_RKNN_URL:-}
+  WHISPER_API_KEY: ${WHISPER_API_KEY:-}
+  VLM_VERBOSE: ${VLM_VERBOSE:-1}
+  VLM_API_KEY: ${VLM_API_KEY:-}
+  VLM_FIX_FREQ: ${VLM_FIX_FREQ:-1}
+  VLM_FIX_GPU_FREQ: ${VLM_FIX_GPU_FREQ:-1}
+  MALLOC_ARENA_MAX: "2"
+
+x-service-base: &service-base
+  build:
+    context: .
+    dockerfile: Dockerfile
+  image: video-descriptor-rkllm:latest
+  platform: linux/arm64
+  restart: unless-stopped
+  entrypoint: ["./scripts/docker-entrypoint.sh"]
+  volumes:
+    - ./models:/app/models
+  networks:
+    - vlm_rkllm_default
+
+x-vision-base: &vision-base
+  <<: *service-base
+  privileged: true
+  devices:
+    - /dev/mpp_service:/dev/mpp_service
+    - /dev/rga:/dev/rga
+    - /dev/dri:/dev/dri
+    - /dev/dma_heap:/dev/dma_heap
+  environment:
+    <<: *common-env
+    VLM_ROLE: vision
+    GRPC_HOST: "0.0.0.0"
+    GRPC_PORT: "50051"
+
+x-llm-base: &llm-base
+  <<: *service-base
+  privileged: true
+  devices:
+    - /dev/dri:/dev/dri
+    - /dev/dma_heap:/dev/dma_heap
+  environment:
+    <<: *common-env
+    VLM_ROLE: llm
+    GRPC_HOST: "0.0.0.0"
+    GRPC_PORT: "50052"
+
+services:
+  gateway:
+    <<: *service-base
+    container_name: video-descriptor-rkllm-gateway
+    privileged: true
+    devices:
+      - /dev/mpp_service:/dev/mpp_service
+      - /dev/rga:/dev/rga
+      - /dev/dri:/dev/dri
+      - /dev/dma_heap:/dev/dma_heap
+    ports:
+      - "8080:8080"
+    environment:
+      <<: *common-env
+      VLM_ROLE: gateway
+      VLM_RUNTIME: distributed
+      VISION_TARGETS: ${VISION_TARGETS:-vision-0:50051}
+      LLM_TARGETS: ${LLM_TARGETS:-llm-0:50052}
+    depends_on:
+      vision-0:
+        condition: service_started
+      llm-0:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8080/ready"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 120s
+
+  vision-0:
+    <<: *vision-base
+    container_name: video-descriptor-rkllm-vision-0
+
+  llm-0:
+    <<: *llm-base
+    container_name: video-descriptor-rkllm-llm-0
+
+  web:
+    image: video-descriptor-rkllm-web
+    build:
+      context: .
+      dockerfile: Dockerfile.web
+    container_name: video-descriptor-rkllm-web
+    ports:
+      - "5000:5000"
+    environment:
+      VLM_API_URL: http://gateway:8080
+      VLM_API_KEY: "${VLM_API_KEY:-}"
+      WEB_CLIENT_DEBUG: "0"
+    depends_on:
+      gateway:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - vlm_rkllm_default
+
+networks:
+  vlm_rkllm_default:
+    external: true

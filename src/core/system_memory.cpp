@@ -68,9 +68,15 @@ std::uint64_t estimateModelRamBytes(std::string_view llm_model_path,
         total += static_cast<std::uint64_t>(*llm * 1.10);
     }
     if (const auto vision = fileSizeBytes(vision_model_path)) {
-        // Each RKNN context loads a vision pack (last worker may be AUTO when count < 3).
-        total += static_cast<std::uint64_t>(*vision) *
-                 static_cast<std::uint64_t>(std::max(1, vision_worker_count)) * 1.15;
+        // Primary context holds vision weights once; dup workers share them and only add
+        // runtime/IO buffers (~15% of pack size each, capped).
+        const int workers = std::max(1, vision_worker_count);
+        total += static_cast<std::uint64_t>(*vision * 1.15);
+        if (workers > 1) {
+            const std::uint64_t per_dup = std::min<std::uint64_t>(
+                static_cast<std::uint64_t>(*vision * 0.15), 128ull * 1024 * 1024);
+            total += per_dup * static_cast<std::uint64_t>(workers - 1);
+        }
     }
     if (context_len > 0) {
         // Rough KV / activation headroom (W8A8, multimodal prefill).

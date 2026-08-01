@@ -62,7 +62,9 @@ bool VisionEncoder::loaded() const noexcept
 
 void VisionEncoder::destroyWorkers()
 {
-    for (auto& worker : workers_) {
+    // Destroy duplicates before the base context (worker 0) so shared weights stay valid.
+    for (int i = worker_count_ - 1; i >= 0; --i) {
+        auto& worker = workers_[static_cast<std::size_t>(i)];
         if (worker.ctx != 0) {
             rknn_destroy(worker.ctx);
             worker.ctx = 0;
@@ -103,6 +105,29 @@ bool VisionEncoder::initWorker(WorkerSlot& worker, std::string_view model_path,
     ret = rknn_set_core_mask(worker.ctx, worker.core_mask);
     if (ret < 0) {
         std::cerr << "rknn_set_core_mask failed: " << ret << '\n';
+        rknn_destroy(worker.ctx);
+        worker.ctx = 0;
+        return false;
+    }
+    return true;
+}
+
+bool VisionEncoder::dupWorkerFromPrimary(WorkerSlot& worker, rknn_core_mask core_mask)
+{
+    if (workers_[0].ctx == 0) {
+        return false;
+    }
+    worker.core_mask = core_mask;
+    worker.ctx = 0;
+    int ret = rknn_dup_context(&workers_[0].ctx, &worker.ctx);
+    if (ret < 0 || worker.ctx == 0) {
+        std::cerr << "rknn_dup_context failed for core mask " << core_mask << ": " << ret << '\n';
+        worker.ctx = 0;
+        return false;
+    }
+    ret = rknn_set_core_mask(worker.ctx, worker.core_mask);
+    if (ret < 0) {
+        std::cerr << "rknn_set_core_mask failed on dup: " << ret << '\n';
         rknn_destroy(worker.ctx);
         worker.ctx = 0;
         return false;
@@ -153,9 +178,15 @@ void VisionEncoder::queryModelInfoFromPrimary()
 bool VisionEncoder::initFromPath(std::string_view model_path, int worker_count)
 {
     const int n = std::clamp(worker_count, 1, kWorkerCount);
-    for (int i = 0; i < n; ++i) {
+    // One full load of vision weights, then rknn_dup_context for the rest (shared weights,
+    // per-worker runtime/IO) — same pattern as whisper-rknn encoder pool.
+    if (!initWorker(workers_[0], model_path, coreMaskForWorker(0, n))) {
+        destroyWorkers();
+        return false;
+    }
+    for (int i = 1; i < n; ++i) {
         const rknn_core_mask mask = coreMaskForWorker(i, n);
-        if (!initWorker(workers_[static_cast<std::size_t>(i)], model_path, mask)) {
+        if (!dupWorkerFromPrimary(workers_[static_cast<std::size_t>(i)], mask)) {
             destroyWorkers();
             return false;
         }
@@ -163,7 +194,7 @@ bool VisionEncoder::initFromPath(std::string_view model_path, int worker_count)
     worker_count_ = n;
     queryModelInfoFromPrimary();
     if (verbose_) {
-        std::cerr << "vision: " << worker_count_ << " RKNN worker(s):";
+        std::cerr << "vision: " << worker_count_ << " RKNN worker(s) (shared weights via dup):";
         for (int i = 0; i < worker_count_; ++i) {
             std::cerr << ' ' << coreMaskName(workers_[static_cast<std::size_t>(i)].core_mask);
         }

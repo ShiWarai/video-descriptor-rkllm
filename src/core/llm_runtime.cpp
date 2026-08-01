@@ -203,6 +203,18 @@ std::string LlmRuntime::generateMultimodal(const std::string& prompt, const Visi
     if (!handle_ || vision.frameCount() == 0) {
         return {};
     }
+    return generateMultimodal(prompt, vision.embeddings(), vision.modelInfo(), vision.frameCount(),
+                              max_new_tokens, temperature);
+}
+
+std::string LlmRuntime::generateMultimodal(const std::string& prompt,
+                                            const std::vector<float>& embeddings,
+                                            const VisionModelInfo& info, std::size_t n_image,
+                                            int max_new_tokens, float temperature)
+{
+    if (!handle_ || n_image == 0 || embeddings.empty()) {
+        return {};
+    }
 
     {
         std::lock_guard lock(response_mutex_);
@@ -212,17 +224,16 @@ std::string LlmRuntime::generateMultimodal(const std::string& prompt, const Visi
         stream_started_ = false;
     }
 
-    multimodal_prompt_ = prompts::expandImageTags(prompt, vision.frameCount());
-    const auto& info = vision.modelInfo();
+    multimodal_prompt_ = prompts::expandImageTags(prompt, n_image);
 
     input_ = {};
     input_.input_type = RKLLM_INPUT_MULTIMODAL;
     input_.role = "user";
     input_.enable_thinking = enable_thinking_;
     input_.multimodal_input.prompt = multimodal_prompt_.data();
-    input_.multimodal_input.image.image_embed = const_cast<float*>(vision.embeddings().data());
+    input_.multimodal_input.image.image_embed = const_cast<float*>(embeddings.data());
     input_.multimodal_input.image.n_image_tokens = info.image_tokens;
-    input_.multimodal_input.image.n_image = vision.frameCount();
+    input_.multimodal_input.image.n_image = static_cast<int>(n_image);
     input_.multimodal_input.image.image_start = "<|vision_start|>";
     input_.multimodal_input.image.image_end = "<|vision_end|>";
     input_.multimodal_input.image.image_content = "<|image_pad|>";
@@ -264,7 +275,7 @@ std::string LlmRuntime::generateMultimodal(const std::string& prompt, const Visi
                   << " temperature=" << sampling_.temperature << " top_k=" << sampling_.top_k
                   << " top_p=" << sampling_.top_p
                   << " presence_penalty=" << sampling_.presence_penalty
-                  << " frames=" << vision.frameCount() << '\n';
+                  << " frames=" << n_image << '\n';
         std::cerr << "----- prompt -----\n" << multimodal_prompt_ << "\n----- end prompt -----\n";
     }
 

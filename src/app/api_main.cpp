@@ -27,6 +27,16 @@ void configureAllocator()
 void logStartup(const vlm::ServerConfig& cfg, const vlm::VideoContextPipeline& pipeline)
 {
     const auto& registry = pipeline.registry();
+    const char* runtime = std::getenv("VLM_RUNTIME");
+    const char* role = std::getenv("VLM_ROLE");
+    std::cerr << "vlm_api_server runtime="
+              << (pipeline.distributed() ? "distributed" : "local");
+    if (role != nullptr && role[0] != '\0') {
+        std::cerr << " role=" << role;
+    } else if (runtime != nullptr && runtime[0] != '\0') {
+        std::cerr << " runtime_env=" << runtime;
+    }
+    std::cerr << '\n';
     std::cerr << "vlm_api_server config: " << registry.models().size() << " model(s)\n";
     for (const auto& model : registry.models()) {
         std::cerr << "  - " << model.id << '\n';
@@ -115,8 +125,7 @@ int main(int argc, char** argv)
         cfg.pipeline.workdir = cfg.workdir;
     }
 
-    auto pipeline =
-        std::make_shared<vlm::VideoContextPipeline>(std::move(cfg.registry), cfg.pipeline);
+    auto pipeline = std::make_shared<vlm::VideoContextPipeline>(std::move(cfg.registry), cfg.pipeline);
 
     auto state = std::make_shared<vlm::ServiceState>();
 
