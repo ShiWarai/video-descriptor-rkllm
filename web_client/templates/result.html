@@ -26,6 +26,11 @@
 
       <section class="card">
         <h2>Транскрипт</h2>
+        {% if result.transcript.status == 'error' %}
+          <p class="error">ASR не выполнен (ошибка запроса к Whisper). Описание видео без речи.</p>
+        {% elif result.transcript.status == 'stub' %}
+          <p class="muted">ASR отключён (WHISPER_RKNN_URL не задан).</p>
+        {% endif %}
         <p class="muted">status: {{ result.transcript.status }}</p>
         <p>{{ result.transcript.text or '—' }}</p>
       </section>
@@ -64,6 +69,9 @@
           {% endif %}
           <p class="muted metrics-note">
             % считается от API wall. Подготовка картинок и ASR идут параллельно — детали ниже без %.
+            {% if result.transcript.status == 'error' %}
+              Whisper ASR: время — только неудачный HTTP-запрос, не транскрипция.
+            {% endif %}
           </p>
           <table class="metrics-table">
             <thead>
@@ -119,7 +127,14 @@
                     {% if key in metrics %}
                       <tr class="metrics-sub">
                         <td>{{ label }}</td>
-                        <td>{{ '%.1f'|format(metrics[key]) }}</td>
+                        <td>
+                          {% if key == 'whisper_ms' and result.transcript.status == 'error' %}
+                            <span class="error">ошибка</span>
+                            <span class="muted"> ({{ '%.1f'|format(metrics[key]) }} ms HTTP)</span>
+                          {% else %}
+                            {{ '%.1f'|format(metrics[key]) }}
+                          {% endif %}
+                        </td>
                         <td class="muted">∥</td>
                       </tr>
                     {% endif %}

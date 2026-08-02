@@ -7,5 +7,7 @@ models/
 *.log
 .env
 .cursor/
-*.mp4
-!tests/fixtures/*.mp4
+
+samples/video
+src/grpc_gen/
+docker-compose.override.yml

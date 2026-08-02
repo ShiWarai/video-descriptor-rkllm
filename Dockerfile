@@ -37,7 +37,9 @@ COPY tests ./tests
 COPY third_party ./third_party
 COPY proto ./proto
 
-RUN cmake -B build -DCMAKE_BUILD_TYPE=Release \
+# grpc_gen is gitignored; always regenerate with container protoc (3.21+ on Ubuntu 24.04).
+RUN rm -rf src/grpc_gen \
+    && cmake -B build -DCMAKE_BUILD_TYPE=Release \
     && cmake --build build -j"$(nproc)" --target vlm_api_server vlm_vision_worker vlm_llm_worker \
     && strip --strip-unneeded \
         build/vlm_api_server \
@@ -55,6 +57,7 @@ RUN apt-get update && \
       apt-get install -y --no-install-recommends \
         ca-certificates \
         curl \
+        util-linux \
         libdrm2 \
         libgomp1 \
         libgrpc++1.51t64 \
