@@ -19,14 +19,15 @@ void expect(bool cond, const char* msg)
 
 std::string expectedPrompt(std::string_view frames, std::string_view task,
                            std::string_view speech_prefix = {},
-                           std::string_view transcript = {})
+                           std::string_view transcript = {},
+                           std::string_view speech_suffix = kSpeechSuffix)
 {
     std::string prompt;
     prompt += frames;
     if (!transcript.empty()) {
         prompt += speech_prefix;
         prompt += transcript;
-        prompt += kSpeechSuffix;
+        prompt += speech_suffix;
     }
     prompt += '\n';
     prompt += task;
@@ -62,7 +63,8 @@ void test_prompt_with_transcript()
     expect(ru.find("/no_think") == std::string::npos, "no think switch in prompt");
 
     const std::string eng = buildUserVisionPrompt("eng", "simple", {}, {}, "hello");
-    expect(eng == expectedPrompt(kFramesIntroEng, kTaskSimpleEng, kSpeechPrefixEng, "hello"),
+    expect(eng == expectedPrompt(kFramesIntroEng, kTaskSimpleEng, kSpeechPrefixEng, "hello",
+                                 kSpeechSuffixEng),
            "eng with transcript");
     const auto eng_speech = eng.find(kSpeechPrefixEng);
     const auto eng_task = eng.find(kTaskSimpleEng);

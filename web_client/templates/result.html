@@ -81,7 +81,7 @@
             <tbody>
               {% set main_stages = [
                 ('queue_wait_ms', 'Ожидание в очереди'),
-                ('image_prep_ms', 'Подготовка картинок (wall)'),
+                ('image_prep_ms', 'Подготовка картинок'),
                 ('llm_generate_ms', 'LLM генерация'),
               ] %}
               {% for key, label in main_stages %}

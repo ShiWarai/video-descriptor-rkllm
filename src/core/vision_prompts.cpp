@@ -106,7 +106,7 @@ std::string buildUserVisionPrompt(std::string_view lang_normalized, std::string_
             if (!speech[i].empty()) {
                 prompt += eng ? kSpeechBracketOpenEng : kSpeechBracketOpenRu;
                 prompt += speech[i];
-                prompt += kSpeechBracketClose;
+                prompt += eng ? kSpeechBracketCloseEng : kSpeechBracketClose;
             }
             prompt += '\n';
         }
@@ -121,7 +121,7 @@ std::string buildUserVisionPrompt(std::string_view lang_normalized, std::string_
     if (!flat_transcript_fallback.empty()) {
         prompt += eng ? kSpeechPrefixEng : kSpeechPrefixRu;
         prompt += flat_transcript_fallback;
-        prompt += kSpeechSuffix;
+        prompt += eng ? kSpeechSuffixEng : kSpeechSuffix;
     }
     prompt += '\n';
     prompt += task;

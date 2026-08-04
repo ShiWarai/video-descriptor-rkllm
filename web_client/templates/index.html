@@ -33,7 +33,7 @@
           <label>
             Модель
             <select name="model" required>
-              {% set default_model_id = 'qwen3.5-2b-video' %}
+              {% set default_model_id = 'qwen3.5-2b' %}
               {% set has_default_model = models | selectattr('id', 'equalto', default_model_id) | list | length > 0 %}
               {% if models %}
                 {% for m in models %}
@@ -97,7 +97,6 @@
         </details>
 
         <button type="submit" id="analyze-submit" {% if not models %}disabled{% endif %}>Отправить</button>
-        <button type="button" id="analyze-reset" class="btn-secondary" hidden>Сбросить блокировку</button>
       </form>
 
       <p id="submit-warning" class="submit-warning" hidden></p>
@@ -123,7 +122,6 @@
       const progressFill = document.getElementById("progress-fill");
       const progressLabel = document.getElementById("progress-label");
       const submitWarning = document.getElementById("submit-warning");
-      const resetBtn = document.getElementById("analyze-reset");
 
       const INFLIGHT_KEY = "vlm_submit_inflight";
       const RESUME_TOKEN = {{ (resume_token or "")|tojson }};
@@ -156,21 +154,27 @@
 
       function lockSubmit(message) {
         submitBtn.disabled = true;
-        resetBtn.hidden = false;
         if (message) {
           showSubmitWarning(message);
         }
       }
 
-      function unlockSubmit() {
+      function releaseSubmit(message) {
         submitting = false;
         activeSubmitToken = null;
         knownJobId = null;
         progressFallbackLabel = null;
         clearInflight();
         submitBtn.disabled = false;
-        resetBtn.hidden = true;
-        hideSubmitWarning();
+        if (message) {
+          showSubmitWarning(message);
+        } else {
+          hideSubmitWarning();
+        }
+      }
+
+      function unlockSubmit() {
+        releaseSubmit();
       }
 
       function setProgress(percent, label) {
@@ -208,8 +212,7 @@
           }
 
           if (!r.ok && data.status === "not_found") {
-            lockSubmit("Задача не найдена на веб-сервере (возможен рестарт web). Сбросьте блокировку вручную.");
-            submitting = false;
+            releaseSubmit("Задача не найдена на веб-сервере (возможен рестарт web). Можно отправить снова.");
             return;
           }
 
@@ -220,8 +223,7 @@
           }
 
           if (data.status === "failed" || data.status === "lost") {
-            lockSubmit(data.error || "Ошибка обработки");
-            submitting = false;
+            releaseSubmit(data.error || "Ошибка обработки");
             return;
           }
 
@@ -325,16 +327,6 @@
 
       startStatusPolling();
 
-      if (resetBtn) {
-        resetBtn.addEventListener("click", () => {
-          if (!confirm("Сбросить блокировку? Отправляйте снова только если уверены, что API свободен.")) {
-            return;
-          }
-          unlockSubmit();
-          progressBox.hidden = true;
-        });
-      }
-
       async function recoverInflightState() {
         const token = RESUME_TOKEN || sessionStorage.getItem(INFLIGHT_KEY);
         if (!token) {
@@ -361,7 +353,6 @@
         submitting = true;
         sessionStorage.setItem(INFLIGHT_KEY, submitToken);
         submitBtn.disabled = true;
-        resetBtn.hidden = true;
         hideSubmitWarning();
         progressBox.hidden = false;
         setProgress(0, "Загрузка файла…");
@@ -385,16 +376,12 @@
           }
 
           if (resp.status === 409) {
-            lockSubmit(data.error || "Уже выполняется другая задача");
-            submitting = false;
-            activeSubmitToken = null;
+            releaseSubmit(data.error || "Уже выполняется другая задача");
             return;
           }
 
           if (!resp.ok && resp.status !== 200 && resp.status !== 202) {
-            lockSubmit(data.error || ("Ошибка запуска (" + resp.status + ")"));
-            submitting = false;
-            activeSubmitToken = null;
+            releaseSubmit(data.error || ("Ошибка запуска (" + resp.status + ")"));
             return;
           }
 

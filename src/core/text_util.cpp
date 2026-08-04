@@ -65,7 +65,8 @@ void collapseHorizontalWhitespace(std::string& text)
     bool prev_space = false;
     for (const char ch : text) {
         if (ch == ' ' || ch == '\t') {
-            if (!prev_space && !collapsed.empty() && collapsed.back() != '\n' && collapsed.back() != '\r') {
+            if (!prev_space && !collapsed.empty() && collapsed.back() != '\n' &&
+                collapsed.back() != '\r') {
                 collapsed.push_back(' ');
             }
             prev_space = true;

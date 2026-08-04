@@ -73,13 +73,6 @@ def analyze_response(*, ok: bool, submit_status: str, **template_kwargs):
 
 
 def model_label(model_id: str) -> str:
-    lower = model_id.lower()
-    if "0.8" in lower:
-        return f"{model_id} (быстрее)"
-    if "4b" in lower:
-        return f"{model_id} (максимальная точность)"
-    if "2b" in lower:
-        return f"{model_id} (точнее)"
     return model_id
 
 
