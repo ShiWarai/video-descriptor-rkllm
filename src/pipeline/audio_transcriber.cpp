@@ -71,6 +71,12 @@ bool parseWhisperTranscribeResponse(std::string_view body, TranscriptResult& res
     const auto j = nlohmann::json::parse(body);
     result.text = j.value("text", "");
     result.segments.clear();
+    if (j.contains("language") && j["language"].is_string()) {
+        const auto lang = j["language"].get<std::string>();
+        if (!lang.empty() && lang != "unknown") {
+            result.language = lang;
+        }
+    }
     if (j.contains("segments") && j["segments"].is_array()) {
         for (const auto& seg : j["segments"]) {
             TranscriptSegment segment;
@@ -86,7 +92,8 @@ bool parseWhisperTranscribeResponse(std::string_view body, TranscriptResult& res
 }
 
 TranscriptResult StubAudioTranscriber::transcribe(const std::filesystem::path& /*video_path*/,
-                                                  const std::optional<std::string>& override_text)
+                                                  const std::optional<std::string>& override_text,
+                                                  std::string_view /*language*/)
 {
     if (override_text && !override_text->empty()) {
         return TranscriptResult{.text = *override_text, .status = "provided"};
@@ -103,7 +110,8 @@ HttpWhisperTranscriber::HttpWhisperTranscriber(std::string base_url, std::string
 }
 
 TranscriptResult HttpWhisperTranscriber::transcribe(
-    const std::filesystem::path& video_path, const std::optional<std::string>& override_text)
+    const std::filesystem::path& video_path, const std::optional<std::string>& override_text,
+    std::string_view language)
 {
     if (override_text && !override_text->empty()) {
         return TranscriptResult{.text = *override_text, .status = "provided"};
@@ -133,7 +141,13 @@ TranscriptResult HttpWhisperTranscriber::transcribe(
          .content = std::move(audio_payload),
          .filename = "audio.wav",
          .content_type = "audio/wav"});
-    items.push_back({.name = "timestamps", .content = "true", .filename = "", .content_type = ""});
+    items.push_back({.name = "model", .content = "whisper-1", .filename = "", .content_type = ""});
+    items.push_back(
+        {.name = "response_format", .content = "verbose_json", .filename = "", .content_type = ""});
+    if (!language.empty()) {
+        items.push_back(
+            {.name = "language", .content = std::string(language), .filename = "", .content_type = ""});
+    }
 
     const auto t_whisper = Clock::now();
 
@@ -142,14 +156,16 @@ TranscriptResult HttpWhisperTranscriber::transcribe(
         headers.emplace("Authorization", "Bearer " + api_key_);
     }
 
+    constexpr const char* kTranscribePath = "/v1/audio/transcriptions";
+
     auto post_transcribe = [&](auto& client) -> httplib::Result {
         client.set_connection_timeout(30, 0);
         client.set_read_timeout(300, 0);
         client.set_write_timeout(30, 0);
         if (headers.empty()) {
-            return client.Post("/transcribe", items);
+            return client.Post(kTranscribePath, items);
         }
-        return client.Post("/transcribe", headers, items);
+        return client.Post(kTranscribePath, headers, items);
     };
 
     httplib::Result response;

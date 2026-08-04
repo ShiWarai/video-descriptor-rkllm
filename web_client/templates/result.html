@@ -17,6 +17,7 @@
       <section class="card error-box">
         <h2>Ошибка</h2>
         <p>{{ error or result.get('error', 'Неизвестная ошибка') }}</p>
+        <p class="muted">Повторная отправка с главной страницы не выполняется автоматически.</p>
       </section>
     {% else %}
       <section class="card">
@@ -26,6 +27,11 @@
 
       <section class="card">
         <h2>Транскрипт</h2>
+        {% if result.transcript.status == 'error' %}
+          <p class="error">ASR не выполнен (ошибка запроса к Whisper). Описание видео без речи.</p>
+        {% elif result.transcript.status == 'stub' %}
+          <p class="muted">ASR отключён (WHISPER_RKNN_URL не задан).</p>
+        {% endif %}
         <p class="muted">status: {{ result.transcript.status }}</p>
         <p>{{ result.transcript.text or '—' }}</p>
       </section>
@@ -40,9 +46,6 @@
               Запрос из браузера:
               <strong>{{ '%.1f'|format(client_metrics.client_wall_ms) }} ms</strong>
               ({{ '%.2f'|format(client_metrics.client_wall_ms / 1000) }} s)
-              {% if client_metrics.get('client_upload_ms') is not none %}
-                · загрузка ≈ {{ '%.1f'|format(client_metrics.client_upload_ms) }} ms
-              {% endif %}
             </p>
           {% endif %}
           {% if wall is not none %}
@@ -67,6 +70,9 @@
           {% endif %}
           <p class="muted metrics-note">
             % считается от API wall. Подготовка картинок и ASR идут параллельно — детали ниже без %.
+            {% if result.transcript.status == 'error' %}
+              Whisper ASR: время — только неудачный HTTP-запрос, не транскрипция.
+            {% endif %}
           </p>
           <table class="metrics-table">
             <thead>
@@ -75,7 +81,7 @@
             <tbody>
               {% set main_stages = [
                 ('queue_wait_ms', 'Ожидание в очереди'),
-                ('image_prep_ms', 'Подготовка картинок (wall)'),
+                ('image_prep_ms', 'Подготовка картинок'),
                 ('llm_generate_ms', 'LLM генерация'),
               ] %}
               {% for key, label in main_stages %}
@@ -122,7 +128,14 @@
                     {% if key in metrics %}
                       <tr class="metrics-sub">
                         <td>{{ label }}</td>
-                        <td>{{ '%.1f'|format(metrics[key]) }}</td>
+                        <td>
+                          {% if key == 'whisper_ms' and result.transcript.status == 'error' %}
+                            <span class="error">ошибка</span>
+                            <span class="muted"> ({{ '%.1f'|format(metrics[key]) }} ms HTTP)</span>
+                          {% else %}
+                            {{ '%.1f'|format(metrics[key]) }}
+                          {% endif %}
+                        </td>
                         <td class="muted">∥</td>
                       </tr>
                     {% endif %}

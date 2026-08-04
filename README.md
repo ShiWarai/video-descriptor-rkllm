@@ -27,6 +27,18 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml pull && docker c
 docker compose -f docker-compose.yml -f docker-compose.prerelease.yml pull && docker compose -f docker-compose.yml -f docker-compose.prerelease.yml up -d
 ```
 
+### Distributed (кластер / smoke gRPC)
+
+На **одной RK3588** быстрее monolith. Distributed — для нескольких узлов или проверки gRPC:
+
+```bash
+docker network create vlm_rkllm_default
+docker compose -f docker-compose.distributed.yml up -d --build
+curl -sf http://localhost:8080/ready
+```
+
+Подробнее: [docs/architecture.md](docs/architecture.md).
+
 Образы: API `linux/arm64`, web `amd64+arm64` — `ghcr.io/shiwarai/video-descriptor-rkllm(:main|:prerelease)` и `-web`.
 
 ## Пайплайн
@@ -117,11 +129,11 @@ resources:
 
 | Переменная | Назначение |
 |------------|------------|
-| `WHISPER_RKNN_URL` | ASR; `http://` (LAN) или `https://` (интернет); пусто = stub |
-| `WHISPER_API_KEY` | Bearer для whisper-rknn `/transcribe`; пусто = без auth |
+| `WHISPER_RKNN_URL` | ASR (whisper-rknn NPU или hwdsl2/whisper-server CPU); `http://` (LAN) или `https://` (интернет); пусто = stub |
+| `WHISPER_API_KEY` | Bearer для `POST /v1/audio/transcriptions`; пусто = без auth |
 | `VLM_DOWNLOAD_MODELS` | `0`, `0.8b`, `2b`, `4b`, `all` |
 | `VLM_API_KEY` | Bearer для `/v1/*`; пусто = без auth |
-| `VLM_FIX_FREQ` | NPU+CPU+DDR max (`scripts/fix_freq_rk3588.sh`, нужен `privileged`) |
+| `VLM_FIX_FREQ` | NPU+CPU+DDR max (`scripts/fix_freq_rk3588.sh`, нужен `privileged`); `0` = off |
 | `VLM_FIX_GPU_FREQ` | `0` = не трогать Mali GPU |
 
 **Секреты:** только в `.env` (файл в [`.gitignore`](.gitignore) и [`.dockerignore`](.dockerignore) — не коммитится и не образ не копируется). Шаблон — [`.env.example`](.env.example) без реальных ключей. `VLM_API_KEY` — наш API; `WHISPER_API_KEY` — исходящие запросы к whisper-rknn (web его не видит). Для whisper: `http://` только в доверенной сети, снаружи — `https://` (сборка с OpenSSL).

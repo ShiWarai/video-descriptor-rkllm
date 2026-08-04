@@ -28,7 +28,7 @@ LlmRuntime::LlmRuntime()
     sampling_ = {};
     callback_ = {};
     param_ = rkllm_createDefaultParam();
-    // Qwen3.5-VL non-thinking card defaults (not Qengineering's greedy top_k=1).
+    // Дефолт карточки Qwen3.5-VL без обдумывания (не жадный top_k=1 от Qengineering).
     param_.top_k = default_top_k_;
     param_.top_p = default_top_p_;
     param_.temperature = default_temperature_;
@@ -131,7 +131,7 @@ bool LlmRuntime::load(const std::string& llm_model_path, int32_t max_new_tokens,
 
     infer_params_.mode = RKLLM_INFER_GENERATE;
     infer_params_.keep_history = 0;
-    // Intentionally NOT calling rkllm_set_chat_template — it disables enable_thinking.
+    // Намеренно НЕ вызываем rkllm_set_chat_template — он отключает enable_thinking.
     return true;
 }
 
@@ -203,6 +203,18 @@ std::string LlmRuntime::generateMultimodal(const std::string& prompt, const Visi
     if (!handle_ || vision.frameCount() == 0) {
         return {};
     }
+    return generateMultimodal(prompt, vision.embeddings(), vision.modelInfo(), vision.frameCount(),
+                              max_new_tokens, temperature);
+}
+
+std::string LlmRuntime::generateMultimodal(const std::string& prompt,
+                                            const std::vector<float>& embeddings,
+                                            const VisionModelInfo& info, std::size_t n_image,
+                                            int max_new_tokens, float temperature)
+{
+    if (!handle_ || n_image == 0 || embeddings.empty()) {
+        return {};
+    }
 
     {
         std::lock_guard lock(response_mutex_);
@@ -212,24 +224,23 @@ std::string LlmRuntime::generateMultimodal(const std::string& prompt, const Visi
         stream_started_ = false;
     }
 
-    multimodal_prompt_ = prompts::expandImageTags(prompt, vision.frameCount());
-    const auto& info = vision.modelInfo();
+    multimodal_prompt_ = prompts::expandImageTags(prompt, n_image);
 
     input_ = {};
     input_.input_type = RKLLM_INPUT_MULTIMODAL;
     input_.role = "user";
     input_.enable_thinking = enable_thinking_;
     input_.multimodal_input.prompt = multimodal_prompt_.data();
-    input_.multimodal_input.image.image_embed = const_cast<float*>(vision.embeddings().data());
+    input_.multimodal_input.image.image_embed = const_cast<float*>(embeddings.data());
     input_.multimodal_input.image.n_image_tokens = info.image_tokens;
-    input_.multimodal_input.image.n_image = vision.frameCount();
+    input_.multimodal_input.image.n_image = static_cast<int>(n_image);
     input_.multimodal_input.image.image_start = "<|vision_start|>";
     input_.multimodal_input.image.image_end = "<|vision_end|>";
     input_.multimodal_input.image.image_content = "<|image_pad|>";
     input_.multimodal_input.image.image_height = info.height;
     input_.multimodal_input.image.image_width = info.width;
 
-    // <=0 keeps the value from rkllm_init (RKLLMInferParam docs).
+    // <=0 сохраняет значение из rkllm_init (по докам RKLLMInferParam).
     const int effective_max =
         max_new_tokens > 0 ? max_new_tokens : param_.max_new_tokens;
     infer_params_.max_new_tokens = max_new_tokens > 0 ? max_new_tokens : 0;
@@ -237,7 +248,7 @@ std::string LlmRuntime::generateMultimodal(const std::string& prompt, const Visi
     last_generate_tokens_ = 0;
     last_prefill_tokens_ = 0;
 
-    // Official Qwen3.5-VL card: non-thinking vs thinking presets.
+    // Официальная карточка Qwen3.5-VL: пресеты без обдумывания и с обдумыванием.
     const float base_temp =
         enable_thinking_ ? thinking_temperature_ : default_temperature_;
     const float base_top_p = enable_thinking_ ? thinking_top_p_ : default_top_p_;
@@ -248,7 +259,7 @@ std::string LlmRuntime::generateMultimodal(const std::string& prompt, const Visi
     sampling_ = {};
     sampling_.temperature = temp;
     sampling_.top_p = base_top_p;
-    // top_k=1 makes temperature irrelevant — bump when sampling.
+    // top_k=1 делает temperature бессмысленным — поднимаем при выборке.
     sampling_.top_k = (temp > 1e-6f && default_top_k_ <= 1) ? 20 : default_top_k_;
     sampling_.repeat_penalty = param_.repeat_penalty;
     sampling_.frequency_penalty = param_.frequency_penalty;
@@ -264,7 +275,7 @@ std::string LlmRuntime::generateMultimodal(const std::string& prompt, const Visi
                   << " temperature=" << sampling_.temperature << " top_k=" << sampling_.top_k
                   << " top_p=" << sampling_.top_p
                   << " presence_penalty=" << sampling_.presence_penalty
-                  << " frames=" << vision.frameCount() << '\n';
+                  << " frames=" << n_image << '\n';
         std::cerr << "----- prompt -----\n" << multimodal_prompt_ << "\n----- end prompt -----\n";
     }
 

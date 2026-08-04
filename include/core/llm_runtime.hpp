@@ -37,6 +37,14 @@ public:
                                                  const VisionEncoder& vision,
                                                  int max_new_tokens = 0,
                                                  float temperature = -1.0f);
+
+    /** Multimodal generate from precomputed vision embeddings (distributed LLM worker). */
+    [[nodiscard]] std::string generateMultimodal(const std::string& prompt,
+                                                 const std::vector<float>& embeddings,
+                                                 const VisionModelInfo& info,
+                                                 std::size_t n_image,
+                                                 int max_new_tokens = 0,
+                                                 float temperature = -1.0f);
     void clearKvCache();
 
     /** Stats from the last generateMultimodal() call. */

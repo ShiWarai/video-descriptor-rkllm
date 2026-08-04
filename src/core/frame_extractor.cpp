@@ -175,7 +175,7 @@ public:
         }
 
         if (use_rkmpp_decoder) {
-            // Stream codecpar often sets yuv420p; rkmpp needs NONE/DRM_PRIME for HW surfaces.
+            // В потоке codecpar часто стоит yuv420p; rkmpp требует NONE/DRM_PRIME для HW поверхностей.
             codec_ctx_->pix_fmt = AV_PIX_FMT_NONE;
             codec_ctx_->get_format = getHwFormat;
             if (av_hwdevice_ctx_create(&hw_device_ctx_, AV_HWDEVICE_TYPE_RKMPP, nullptr, nullptr,

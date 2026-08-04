@@ -70,11 +70,12 @@ void test_interleaved_prompt()
     const std::string prompt =
         buildUserVisionPrompt("ru", "simple", times, segments, {}, 4.0);
     expect(prompt.find(kFramesInterleavedIntroRu) == 0, "interleaved intro");
-    expect(prompt.find("<image> \"фраза A\"") != std::string::npos, "first frame + speech");
+    expect(prompt.find("<image> <р>фраза A</р>") != std::string::npos,
+           "first frame + speech tag");
     expect(prompt.find("<image>\n") != std::string::npos, "frame without speech");
-    expect(prompt.find("фраза B") != std::string::npos, "second interval speech");
+    expect(prompt.find("<р>фраза B</р>") != std::string::npos, "second interval speech");
+    expect(prompt.find("<image> \"") == std::string::npos, "no bare quotes next to image");
     expect(prompt.find("[0.00s]") == std::string::npos, "no timestamps");
-    expect(prompt.find("Речь:") == std::string::npos, "no speech label");
     expect(prompt.find(kSpeechPrefixRu) == std::string::npos, "no flat speech prefix");
     expect(prompt.find(kTaskSimpleRu) != std::string::npos, "task at end");
 }
@@ -83,7 +84,8 @@ void test_fallback_flat_transcript()
 {
     const std::string prompt = buildUserVisionPrompt("ru", "detailed", {}, {}, "плоский текст");
     expect(prompt.find(kFramesIntroRu) != std::string::npos, "flat intro");
-    expect(prompt.find("плоский текст") != std::string::npos, "flat transcript");
+    expect(prompt.find("<р>плоский текст</р>") != std::string::npos,
+           "flat transcript tagged");
     expect(prompt.find(kFramesInterleavedIntroRu) == std::string::npos, "no interleaved intro");
 }
 
@@ -143,9 +145,62 @@ void test_prompt_ok_text_without_segments_uses_flat()
     const std::string prompt =
         buildUserVisionPrompt("ru", "detailed", times, {}, "привет мир", 3.0);
     expect(prompt.find(kFramesIntroRu) != std::string::npos, "flat intro");
-    expect(prompt.find("привет мир") != std::string::npos, "flat transcript used");
+    expect(prompt.find("<р>привет мир</р>") != std::string::npos,
+           "flat transcript used");
     expect(prompt.find(kFramesInterleavedIntroRu) == std::string::npos,
            "no interleaved without segments");
+}
+
+void test_parse_whisper_verbose_json()
+{
+    const std::string body = R"({
+        "task": "transcribe",
+        "language": "ru",
+        "duration": 2.5,
+        "text": "привет мир",
+        "segments": [
+            {
+                "id": 0,
+                "seek": 0,
+                "start": 0.0,
+                "end": 1.2,
+                "text": "привет",
+                "tokens": [],
+                "temperature": 0.0,
+                "avg_logprob": 0.0,
+                "compression_ratio": 0.0,
+                "no_speech_prob": 0.0
+            },
+            {
+                "id": 1,
+                "seek": 0,
+                "start": 1.2,
+                "end": 2.5,
+                "text": "мир",
+                "tokens": [],
+                "temperature": 0.0,
+                "avg_logprob": 0.0,
+                "compression_ratio": 0.0,
+                "no_speech_prob": 0.0
+            }
+        ]
+    })";
+
+    vlm::TranscriptResult result;
+    expect(vlm::parseWhisperTranscribeResponse(body, result), "parse verbose_json ok");
+    expect(result.text == "привет мир", "full text");
+    expect(result.language.has_value() && *result.language == "ru", "language");
+    expect(result.segments.size() == 2, "two segments");
+    expect(result.segments[0].text == "привет", "first segment text");
+    expect(result.segments[1].end == 2.5, "second segment end");
+}
+
+void test_parse_whisper_unknown_language_ignored()
+{
+    const std::string body = R"({"text": "hello", "language": "unknown"})";
+    vlm::TranscriptResult result;
+    expect(vlm::parseWhisperTranscribeResponse(body, result), "parse ok");
+    expect(!result.language.has_value(), "unknown language not stored");
 }
 
 }  // namespace
@@ -162,6 +217,8 @@ int main()
     test_expand_image_tags();
     test_parse_whisper_segments();
     test_parse_whisper_without_segments();
+    test_parse_whisper_verbose_json();
+    test_parse_whisper_unknown_language_ignored();
     std::cout << "test_asr_segments: ok\n";
     return 0;
 }

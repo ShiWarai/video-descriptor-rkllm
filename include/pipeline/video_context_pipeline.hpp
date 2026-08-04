@@ -6,9 +6,8 @@
 #include <string_view>
 
 #include "core/frame_extractor.hpp"
-#include "core/llm_runtime.hpp"
-#include "core/vision_encoder.hpp"
 #include "pipeline/audio_transcriber.hpp"
+#include "pipeline/stage_transport.hpp"
 #include "runtime/model_registry.hpp"
 #include "types.hpp"
 
@@ -16,29 +15,31 @@ namespace vlm {
 
 class VideoContextPipeline {
 public:
-    VideoContextPipeline(ModelRegistry registry, PipelineConfig config);
+    VideoContextPipeline(ModelRegistry registry, PipelineConfig config,
+                         std::unique_ptr<StageTransport> transport = nullptr);
 
     [[nodiscard]] bool initialize(std::optional<std::string_view> preload_model_id = std::nullopt);
     [[nodiscard]] bool isReady() const noexcept { return ready_; }
+    [[nodiscard]] bool distributed() const noexcept { return transport_->distributed(); }
 
     [[nodiscard]] AnalyzeResult analyze(const AnalyzeRequest& request);
     [[nodiscard]] const ModelRegistry& registry() const noexcept { return registry_; }
-    [[nodiscard]] const std::string& loadedModelId() const noexcept { return loaded_model_id_; }
+    [[nodiscard]] const std::string& loadedModelId() const noexcept {
+        return transport_->loadedModelId();
+    }
     [[nodiscard]] const PipelineConfig& config() const noexcept { return config_; }
 
 private:
     ModelRegistry registry_;
     PipelineConfig config_;
-    VisionEncoder vision_;
-    LlmRuntime llm_;
+    std::unique_ptr<StageTransport> transport_;
     FrameExtractor extractor_;
     std::unique_ptr<AudioTranscriber> transcriber_;
-    std::string loaded_model_id_;
     bool ready_ = false;
 
     [[nodiscard]] bool ensureModel(std::string_view model_id, std::string* error_out = nullptr);
-    /** Returns vision worker count (1..3) that fits, or 0 if model cannot be loaded. */
-    [[nodiscard]] int planVisionWorkers(std::string_view model_id, std::string* error_out = nullptr) const;
+    [[nodiscard]] int planVisionWorkers(std::string_view model_id,
+                                        std::string* error_out = nullptr) const;
     void releaseModels();
     [[nodiscard]] int resolveFrameBudget(const AnalyzeRequest& request) const;
     [[nodiscard]] int effectiveMaxFrames(const AnalyzeRequest& request) const;

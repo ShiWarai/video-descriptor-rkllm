@@ -15,7 +15,8 @@ namespace vlm {
 [[nodiscard]] std::optional<std::uint64_t> fileSizeBytes(const std::filesystem::path& path);
 
 /**
- * Conservative RSS estimate for one loaded model pack (LLM mmap + N× RKNN vision + KV).
+ * Conservative RSS estimate for one loaded model pack (LLM mmap + shared vision weights
+ * via rknn_dup_context + small per-worker runtime + KV).
  * Intentionally high — acts as headroom without a separate system reserve.
  */
 [[nodiscard]] std::uint64_t estimateModelRamBytes(std::string_view llm_model_path,

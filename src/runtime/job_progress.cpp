@@ -119,7 +119,7 @@ double estimateJobProgressPercent(const JobProgressUpdate& state, double elapsed
         return clampPercent(50.0 + 49.0 * timeRatio(elapsed_sec, kTypicalLlmSec));
     }
 
-    // Parallel prep: model/frames/vision vs whisper — take the furthest track (0..50%).
+    // Параллельная подготовка: model/frames/vision против whisper — берём самый дальний трек (0..50%).
     double vision_track = 12.0;
     if (state.model_load_done) {
         vision_track = 20.0;

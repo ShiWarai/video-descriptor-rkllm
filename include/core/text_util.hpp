@@ -5,9 +5,10 @@
 
 namespace vlm {
 
+/** Убрать блоки обдумывания из ответа модели. */
 [[nodiscard]] std::string stripThinkingTags(std::string text);
 
-/** Extract inner text of each thinking block (redacted_thinking or thinking tags). */
+/** Внутренний текст каждого блока обдумывания (теги think / thinking). */
 [[nodiscard]] std::vector<std::string> extractThinkingBlocks(const std::string& text);
 
 }  // namespace vlm

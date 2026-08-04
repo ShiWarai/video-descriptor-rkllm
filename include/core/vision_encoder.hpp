@@ -54,7 +54,9 @@ public:
     VisionEncoder(VisionEncoder&&) = delete;
     VisionEncoder& operator=(VisionEncoder&&) = delete;
 
-    /** Load vision pack with worker_count contexts (1..kWorkerCount). If fewer than 3, last worker uses NPU AUTO. */
+    /** Load vision pack with worker_count contexts (1..kWorkerCount).
+     *  Worker 0 does a full rknn_init; others use rknn_dup_context (shared weights).
+     *  If fewer than 3, last worker uses NPU AUTO. */
     [[nodiscard]] bool load(const std::string& model_path, bool verbose = false,
                             int worker_count = kWorkerCount);
     void unload();
@@ -105,6 +107,8 @@ private:
     [[nodiscard]] bool initFromPath(std::string_view model_path, int worker_count);
     [[nodiscard]] bool initWorker(WorkerSlot& worker, std::string_view model_path,
                                   rknn_core_mask core_mask);
+    /** Duplicate primary context with shared weights; pin to core_mask. */
+    [[nodiscard]] bool dupWorkerFromPrimary(WorkerSlot& worker, rknn_core_mask core_mask);
     void destroyWorkers();
     void queryModelInfoFromPrimary();
     [[nodiscard]] std::size_t floatsPerImage() const;

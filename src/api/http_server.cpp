@@ -209,7 +209,7 @@ void HttpServer::run()
     std::cerr << "workdir cleared: " << config_.workdir << '\n';
 
     httplib::Server svr;
-    // Cap upload size so concurrent buffered bodies cannot grow unbounded.
+    // Ограничение размера загрузки, чтобы одновременные буферизированные тела не росли бесконечно.
     constexpr std::size_t kMaxUploadBytes = 512ull * 1024ull * 1024ull;  // 512 MiB
     svr.set_payload_max_length(kMaxUploadBytes);
 
