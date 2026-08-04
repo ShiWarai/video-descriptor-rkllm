@@ -84,7 +84,7 @@ void test_fallback_flat_transcript()
 {
     const std::string prompt = buildUserVisionPrompt("ru", "detailed", {}, {}, "плоский текст");
     expect(prompt.find(kFramesIntroRu) != std::string::npos, "flat intro");
-    expect(prompt.find("[транскрипт речи (ASR): плоский текст]") != std::string::npos,
+    expect(prompt.find("[речь: плоский текст]") != std::string::npos,
            "flat transcript bracketed");
     expect(prompt.find(kFramesInterleavedIntroRu) == std::string::npos, "no interleaved intro");
 }
@@ -145,7 +145,7 @@ void test_prompt_ok_text_without_segments_uses_flat()
     const std::string prompt =
         buildUserVisionPrompt("ru", "detailed", times, {}, "привет мир", 3.0);
     expect(prompt.find(kFramesIntroRu) != std::string::npos, "flat intro");
-    expect(prompt.find("[транскрипт речи (ASR): привет мир]") != std::string::npos,
+    expect(prompt.find("[речь: привет мир]") != std::string::npos,
            "flat transcript used");
     expect(prompt.find(kFramesInterleavedIntroRu) == std::string::npos,
            "no interleaved without segments");
