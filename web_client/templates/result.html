@@ -17,6 +17,7 @@
       <section class="card error-box">
         <h2>Ошибка</h2>
         <p>{{ error or result.get('error', 'Неизвестная ошибка') }}</p>
+        <p class="muted">Повторная отправка с главной страницы не выполняется автоматически.</p>
       </section>
     {% else %}
       <section class="card">

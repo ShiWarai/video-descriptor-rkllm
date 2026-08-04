@@ -70,11 +70,12 @@ void test_interleaved_prompt()
     const std::string prompt =
         buildUserVisionPrompt("ru", "simple", times, segments, {}, 4.0);
     expect(prompt.find(kFramesInterleavedIntroRu) == 0, "interleaved intro");
-    expect(prompt.find("<image> \"фраза A\"") != std::string::npos, "first frame + speech");
+    expect(prompt.find("<image> [речь: фраза A]") != std::string::npos,
+           "first frame + bracketed speech");
     expect(prompt.find("<image>\n") != std::string::npos, "frame without speech");
-    expect(prompt.find("фраза B") != std::string::npos, "second interval speech");
+    expect(prompt.find("[речь: фраза B]") != std::string::npos, "second interval speech");
+    expect(prompt.find("<image> \"") == std::string::npos, "no bare quotes next to image");
     expect(prompt.find("[0.00s]") == std::string::npos, "no timestamps");
-    expect(prompt.find("Речь:") == std::string::npos, "no speech label");
     expect(prompt.find(kSpeechPrefixRu) == std::string::npos, "no flat speech prefix");
     expect(prompt.find(kTaskSimpleRu) != std::string::npos, "task at end");
 }
@@ -83,7 +84,8 @@ void test_fallback_flat_transcript()
 {
     const std::string prompt = buildUserVisionPrompt("ru", "detailed", {}, {}, "плоский текст");
     expect(prompt.find(kFramesIntroRu) != std::string::npos, "flat intro");
-    expect(prompt.find("плоский текст") != std::string::npos, "flat transcript");
+    expect(prompt.find("[транскрипт речи (ASR): плоский текст]") != std::string::npos,
+           "flat transcript bracketed");
     expect(prompt.find(kFramesInterleavedIntroRu) == std::string::npos, "no interleaved intro");
 }
 
@@ -143,7 +145,8 @@ void test_prompt_ok_text_without_segments_uses_flat()
     const std::string prompt =
         buildUserVisionPrompt("ru", "detailed", times, {}, "привет мир", 3.0);
     expect(prompt.find(kFramesIntroRu) != std::string::npos, "flat intro");
-    expect(prompt.find("привет мир") != std::string::npos, "flat transcript used");
+    expect(prompt.find("[транскрипт речи (ASR): привет мир]") != std::string::npos,
+           "flat transcript used");
     expect(prompt.find(kFramesInterleavedIntroRu) == std::string::npos,
            "no interleaved without segments");
 }

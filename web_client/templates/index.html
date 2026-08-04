@@ -97,7 +97,10 @@
         </details>
 
         <button type="submit" id="analyze-submit" {% if not models %}disabled{% endif %}>Отправить</button>
+        <button type="button" id="analyze-reset" class="btn-secondary" hidden>Сбросить блокировку</button>
       </form>
+
+      <p id="submit-warning" class="submit-warning" hidden></p>
 
       <div id="job-progress" class="job-progress" hidden>
         <div class="progress-track" aria-hidden="true">
@@ -119,13 +122,173 @@
       const progressBox = document.getElementById("job-progress");
       const progressFill = document.getElementById("progress-fill");
       const progressLabel = document.getElementById("progress-label");
+      const submitWarning = document.getElementById("submit-warning");
+      const resetBtn = document.getElementById("analyze-reset");
+
+      const INFLIGHT_KEY = "vlm_submit_inflight";
+      const RESUME_TOKEN = {{ (resume_token or "")|tojson }};
+      let submitting = false;
+      let activeSubmitToken = null;
 
       function dash(v) { return v && String(v).length ? v : "—"; }
 
+      function setInflight() {
+        sessionStorage.setItem(INFLIGHT_KEY, String(Date.now()));
+      }
+
+      function clearInflight() {
+        sessionStorage.removeItem(INFLIGHT_KEY);
+      }
+
+      function hasInflight() {
+        return sessionStorage.getItem(INFLIGHT_KEY) !== null;
+      }
+
+      function showSubmitWarning(message) {
+        submitWarning.textContent = message;
+        submitWarning.hidden = false;
+      }
+
+      function hideSubmitWarning() {
+        submitWarning.hidden = true;
+        submitWarning.textContent = "";
+      }
+
+      function lockSubmit(message) {
+        submitBtn.disabled = true;
+        resetBtn.hidden = false;
+        if (message) {
+          showSubmitWarning(message);
+        }
+      }
+
+      function unlockSubmit() {
+        submitting = false;
+        activeSubmitToken = null;
+        knownJobId = null;
+        progressFallbackLabel = null;
+        clearInflight();
+        submitBtn.disabled = false;
+        resetBtn.hidden = true;
+        hideSubmitWarning();
+      }
+
       function setProgress(percent, label) {
-        const p = Math.max(0, Math.min(100, Number(percent) || 0));
-        progressFill.style.width = p.toFixed(1) + "%";
-        progressLabel.textContent = label || "Обработка…";
+        if (percent !== null && percent !== undefined) {
+          const p = Math.max(0, Math.min(100, Number(percent) || 0));
+          progressFill.style.width = p.toFixed(1) + "%";
+        }
+        if (label) {
+          progressLabel.textContent = label;
+        }
+      }
+
+      let statusTimer = null;
+      let progressFallbackLabel = null;
+      let knownJobId = null;
+
+      function setProgressFallback(label) {
+        progressFallbackLabel = label || null;
+        if (label && !knownJobId) {
+          setProgress(null, label);
+        }
+      }
+
+      async function pollAnalyzeUntilDone(submitToken) {
+        while (true) {
+          const r = await fetch("/api/analyze/" + encodeURIComponent(submitToken), {
+            cache: "no-store",
+          });
+          let data = {};
+          try {
+            data = await r.json();
+          } catch (_) {
+            await new Promise((resolve) => setTimeout(resolve, 1500));
+            continue;
+          }
+
+          if (!r.ok && data.status === "not_found") {
+            lockSubmit("Задача не найдена на веб-сервере (возможен рестарт web). Сбросьте блокировку вручную.");
+            submitting = false;
+            return;
+          }
+
+          if (data.status === "done") {
+            clearInflight();
+            window.location.assign("/result/" + encodeURIComponent(submitToken));
+            return;
+          }
+
+          if (data.status === "failed" || data.status === "lost") {
+            lockSubmit(data.error || "Ошибка обработки");
+            submitting = false;
+            return;
+          }
+
+          await new Promise((resolve) => setTimeout(resolve, 1500));
+        }
+      }
+
+      async function pollJobProgress() {
+        let jobId = knownJobId;
+        if (!jobId) {
+          const status = await refreshStatus();
+          jobId = status && status.current_job_id;
+        }
+        if (!jobId) {
+          return false;
+        }
+
+        knownJobId = jobId;
+        progressFallbackLabel = null;
+
+        const r = await fetch("/api/jobs/" + encodeURIComponent(jobId), { cache: "no-store" });
+        if (!r.ok) {
+          return true;
+        }
+        const data = await r.json();
+        const pct = data.progress_percent ?? 0;
+        const label = data.stage_label
+          ? data.stage_label + " — " + pct.toFixed(0) + "%"
+          : "Обработка — " + pct.toFixed(0) + "%";
+        setProgress(pct, label);
+        job.textContent = dash(data.job_id || jobId);
+        st.textContent = data.status === "done" ? "idle" : "busy";
+        st.classList.toggle("busy", data.status === "running");
+        return true;
+      }
+
+      function startJobProgressPolling() {
+        return setInterval(async () => {
+          try {
+            const hasJob = await pollJobProgress();
+            if (!hasJob && progressFallbackLabel) {
+              setProgress(null, progressFallbackLabel);
+            }
+          } catch (_) {
+            /* ignore */
+          }
+        }, 1000);
+      }
+
+      async function resumeExistingJob(submitToken) {
+        if (!submitToken || submitting) {
+          return;
+        }
+        submitting = true;
+        activeSubmitToken = submitToken;
+        knownJobId = null;
+        submitBtn.disabled = true;
+        progressBox.hidden = false;
+        setProgressFallback("Восстановление задачи…");
+        lockSubmit("Отслеживаем уже отправленную задачу. Повторная отправка отключена.");
+
+        const jobPollTimer = startJobProgressPolling();
+        try {
+          await pollAnalyzeUntilDone(submitToken);
+        } finally {
+          clearInterval(jobPollTimer);
+        }
       }
 
       async function refreshStatus() {
@@ -153,33 +316,6 @@
         }
       }
 
-      async function pollJobProgress(knownJobId) {
-        let jobId = knownJobId;
-        if (!jobId) {
-          const status = await refreshStatus();
-          jobId = status && status.current_job_id;
-        }
-        if (!jobId) {
-          return null;
-        }
-        const r = await fetch("/api/jobs/" + encodeURIComponent(jobId), { cache: "no-store" });
-        if (!r.ok) {
-          return jobId;
-        }
-        const data = await r.json();
-        const pct = data.progress_percent ?? 0;
-        const label = data.stage_label
-          ? data.stage_label + " — " + pct.toFixed(0) + "%"
-          : "Обработка — " + pct.toFixed(0) + "%";
-        setProgress(pct, label);
-        job.textContent = dash(data.job_id || jobId);
-        st.textContent = data.status === "done" ? "idle" : "busy";
-        st.classList.toggle("busy", data.status === "running");
-        return jobId;
-      }
-
-      let statusTimer = null;
-
       function startStatusPolling() {
         refreshStatus();
         if (!statusTimer) {
@@ -189,54 +325,92 @@
 
       startStatusPolling();
 
+      if (resetBtn) {
+        resetBtn.addEventListener("click", () => {
+          if (!confirm("Сбросить блокировку? Отправляйте снова только если уверены, что API свободен.")) {
+            return;
+          }
+          unlockSubmit();
+          progressBox.hidden = true;
+        });
+      }
+
+      async function recoverInflightState() {
+        const token = RESUME_TOKEN || sessionStorage.getItem(INFLIGHT_KEY);
+        if (!token) {
+          return;
+        }
+        await resumeExistingJob(token);
+      }
+
+      recoverInflightState();
+
       if (!form || !submitBtn) {
         return;
       }
 
       form.addEventListener("submit", async (e) => {
         e.preventDefault();
-        if (submitBtn.disabled) {
+        if (submitting || submitBtn.disabled || activeSubmitToken) {
           return;
         }
 
+        const submitToken = crypto.randomUUID();
+        activeSubmitToken = submitToken;
+        knownJobId = null;
+        submitting = true;
+        sessionStorage.setItem(INFLIGHT_KEY, submitToken);
         submitBtn.disabled = true;
+        resetBtn.hidden = true;
+        hideSubmitWarning();
         progressBox.hidden = false;
         setProgress(0, "Загрузка файла…");
 
-        let knownJobId = null;
-        let jobPollTimer = null;
-
-        const stopJobPoll = () => {
-          if (jobPollTimer) {
-            clearInterval(jobPollTimer);
-            jobPollTimer = null;
-          }
-        };
-
-        jobPollTimer = setInterval(async () => {
-          try {
-            knownJobId = await pollJobProgress(knownJobId);
-          } catch (_) {
-            /* ignore transient poll errors */
-          }
-        }, 500);
+        const jobPollTimer = startJobProgressPolling();
 
         try {
-          const resp = await fetch(form.action, {
+          const body = new FormData(form);
+          body.set("submit_token", submitToken);
+
+          const resp = await fetch("/api/analyze", {
             method: "POST",
-            body: new FormData(form),
+            body: body,
           });
-          stopJobPoll();
-          setProgress(100, "Готово");
-          const html = await resp.text();
-          document.open();
-          document.write(html);
-          document.close();
+
+          let data = {};
+          try {
+            data = await resp.json();
+          } catch (_) {
+            data = {};
+          }
+
+          if (resp.status === 409) {
+            lockSubmit(data.error || "Уже выполняется другая задача");
+            submitting = false;
+            activeSubmitToken = null;
+            return;
+          }
+
+          if (!resp.ok && resp.status !== 200 && resp.status !== 202) {
+            lockSubmit(data.error || ("Ошибка запуска (" + resp.status + ")"));
+            submitting = false;
+            activeSubmitToken = null;
+            return;
+          }
+
+          setProgressFallback("Файл принят, ожидание API…");
+          await pollAnalyzeUntilDone(submitToken);
         } catch (err) {
-          stopJobPoll();
-          submitBtn.disabled = false;
-          progressBox.hidden = true;
-          alert("Ошибка запроса: " + err);
+          lockSubmit(
+            "Связь с веб-сервером потеряна после отправки. Повтор не запускается — продолжаем отслеживание той же задачи."
+          );
+          try {
+            await pollAnalyzeUntilDone(submitToken);
+          } catch (_) {
+            submitting = false;
+          }
+        } finally {
+          clearInterval(jobPollTimer);
         }
       });
     })();

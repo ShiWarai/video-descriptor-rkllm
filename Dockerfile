@@ -5,8 +5,7 @@ FROM ubuntu:24.04 AS builder
 ENV DEBIAN_FRONTEND=noninteractive
 
 RUN apt-get update && \
-    for attempt in 1 2 3 4 5; do \
-      apt-get install -y --no-install-recommends \
+    apt-get install -y --no-install-recommends \
         build-essential \
         ca-certificates \
         cmake \
@@ -22,11 +21,6 @@ RUN apt-get update && \
         protobuf-compiler \
         protobuf-compiler-grpc \
         zlib1g-dev \
-      && break; \
-      echo "apt install failed (attempt ${attempt}), retrying..."; \
-      sleep 15; \
-      apt-get update; \
-    done \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -53,8 +47,7 @@ FROM ubuntu:24.04 AS runtime
 ENV DEBIAN_FRONTEND=noninteractive
 
 RUN apt-get update && \
-    for attempt in 1 2 3 4 5; do \
-      apt-get install -y --no-install-recommends \
+    apt-get install -y --no-install-recommends \
         ca-certificates \
         curl \
         util-linux \
@@ -69,11 +62,6 @@ RUN apt-get update && \
         libvorbisenc2 \
         libssl3t64 \
         zlib1g \
-      && break; \
-      echo "apt install failed (attempt ${attempt}), retrying..."; \
-      sleep 15; \
-      apt-get update; \
-    done \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app

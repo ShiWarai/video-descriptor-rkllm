@@ -64,6 +64,25 @@ button:disabled {
   cursor: not-allowed;
 }
 
+button.btn-secondary {
+  margin-top: 0.75rem;
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--muted);
+  font-weight: 500;
+}
+
+.submit-warning {
+  margin-top: 1rem;
+  padding: 0.75rem 1rem;
+  border-radius: 8px;
+  border: 1px solid #5a4030;
+  background: #2a1f18;
+  color: #f0c9a8;
+  font-size: 0.95rem;
+  line-height: 1.45;
+}
+
 .job-progress {
   margin-top: 1.25rem;
 }

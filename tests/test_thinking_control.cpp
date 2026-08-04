@@ -26,7 +26,7 @@ std::string expectedPrompt(std::string_view frames, std::string_view task,
     if (!transcript.empty()) {
         prompt += speech_prefix;
         prompt += transcript;
-        prompt += '"';
+        prompt += kSpeechSuffix;
     }
     prompt += '\n';
     prompt += task;
