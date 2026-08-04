@@ -7,7 +7,7 @@
 
 namespace vlm {
 
-// Execute script via /bin/bash without a shell wrapper; env values are not interpreted.
+// Выполнение скрипта через /bin/bash без обёртки оболочки; значения окружения не интерпретируются.
 [[nodiscard]] bool runBashScript(
     const std::filesystem::path& script_path,
     const std::vector<std::pair<std::string, std::string>>& env_overrides);

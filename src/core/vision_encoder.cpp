@@ -62,7 +62,7 @@ bool VisionEncoder::loaded() const noexcept
 
 void VisionEncoder::destroyWorkers()
 {
-    // Destroy duplicates before the base context (worker 0) so shared weights stay valid.
+    // Уничтожаем дубликаты до базового контекста (worker 0), чтобы общие веса остались валидными.
     for (int i = worker_count_ - 1; i >= 0; --i) {
         auto& worker = workers_[static_cast<std::size_t>(i)];
         if (worker.ctx != 0) {
@@ -178,8 +178,8 @@ void VisionEncoder::queryModelInfoFromPrimary()
 bool VisionEncoder::initFromPath(std::string_view model_path, int worker_count)
 {
     const int n = std::clamp(worker_count, 1, kWorkerCount);
-    // One full load of vision weights, then rknn_dup_context for the rest (shared weights,
-    // per-worker runtime/IO) — same pattern as whisper-rknn encoder pool.
+    // Полная загрузка vision весов один раз, затем rknn_dup_context для остальных (общие веса,
+    // на рабочего рантайм/IО) — тот же паттерн, что в пуле энкодеров whisper-rknn.
     if (!initWorker(workers_[0], model_path, coreMaskForWorker(0, n))) {
         destroyWorkers();
         return false;

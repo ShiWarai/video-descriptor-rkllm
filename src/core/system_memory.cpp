@@ -64,12 +64,12 @@ std::uint64_t estimateModelRamBytes(std::string_view llm_model_path,
 {
     std::uint64_t total = 0;
     if (const auto llm = fileSizeBytes(llm_model_path)) {
-        // Weights are typically mmap'd close to file size; add headroom for runtime.
+        // Веса обычно маппятся близко к размеру файла, добавляем запас для рантайма.
         total += static_cast<std::uint64_t>(*llm * 1.10);
     }
     if (const auto vision = fileSizeBytes(vision_model_path)) {
-        // Primary context holds vision weights once; dup workers share them and only add
-        // runtime/IO buffers (~15% of pack size each, capped).
+        // Основной контекст держит vision веса один раз; дубликаты разделяют их и добавляют
+        // только рантайм/IO буферы (~15% от размера пакета каждый, с ограничением).
         const int workers = std::max(1, vision_worker_count);
         total += static_cast<std::uint64_t>(*vision * 1.15);
         if (workers > 1) {
@@ -79,7 +79,7 @@ std::uint64_t estimateModelRamBytes(std::string_view llm_model_path,
         }
     }
     if (context_len > 0) {
-        // Rough KV / activation headroom (W8A8, multimodal prefill).
+        // Примерный запас KV / активаций (W8A8, мультимодальный префилл).
         total += static_cast<std::uint64_t>(context_len) * 80 * 1024;
     }
     return total;

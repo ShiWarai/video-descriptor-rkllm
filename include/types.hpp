@@ -51,7 +51,7 @@ struct AnalyzeResult {
     int frame_budget = 0;
     bool frames_capped_by_context = false;
     double duration_sec = 0.0;
-    // Stage timings in milliseconds, e.g. model_load_ms, llm_generate_ms, total_ms.
+    // Времена стадий в миллисекундах, например model_load_ms, llm_generate_ms, total_ms.
     std::map<std::string, double> metrics;
     std::string error;
 
@@ -66,18 +66,18 @@ struct PipelineConfig {
     std::string default_lang = "ru";
     int prompt_reserve_tokens = 512;
     int absolute_max_frames = 0;
-    // Qwen3.5-VL non-thinking (official card); Qengineering demo uses top_k=1 only.
+    // Qwen3.5-VL без обдумывания (официальная карточка); демо Qengineering использует только top_k=1.
     float temperature = 0.7f;
     int top_k = 20;
     float top_p = 0.8f;
     float presence_penalty = 1.5f;
-    // Qwen3.5-VL thinking mode
+    // Режим обдумывания Qwen3.5-VL
     float thinking_temperature = 0.6f;
     float thinking_top_p = 0.95f;
     float thinking_presence_penalty = 0.0f;
     std::string workdir = "/tmp/vlm_work";
     std::string whisper_url;
-    std::string whisper_api_key;  // Bearer for OpenAI /v1/audio/transcriptions; empty = no auth
+    std::string whisper_api_key;  // Bearer для OpenAI /v1/audio/transcriptions; пустой = без авторизации
     bool enable_thinking = false;
     bool verbose = false;
 };

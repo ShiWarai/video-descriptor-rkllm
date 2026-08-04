@@ -12,7 +12,7 @@ struct ModelSpec {
     std::string id;
     std::string vision_model_path;
     std::string llm_model_path;
-    // Optional overrides (nullopt → pipeline defaults). From Qwen3.5-VL card / model pack.
+    // Опциональные перезаписи (nullopt → дефолт пайплайна). С карточки Qwen3.5-VL / модели.
     std::optional<float> temperature;
     std::optional<int> top_k;
     std::optional<float> top_p;

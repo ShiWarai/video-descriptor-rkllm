@@ -16,9 +16,9 @@ namespace {
 void configureAllocator()
 {
 #if defined(__GLIBC__)
-    // Fewer arenas → less retained RSS under multi-threaded httplib.
+    // Меньше арен → меньше удерживаемого RSS при многопоточном httplib.
     mallopt(M_ARENA_MAX, 2);
-    // Return free pages to the OS more eagerly after large RKLLM/vision allocations.
+    // Возвращать свободные страницы ОС более охотно после больших выделений RKLLM/vision.
     mallopt(M_TRIM_THRESHOLD, 64 * 1024);
     mallopt(M_MMAP_THRESHOLD, 256 * 1024);
 #endif

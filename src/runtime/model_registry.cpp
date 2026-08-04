@@ -75,7 +75,7 @@ std::optional<std::string> ModelRegistry::resolveId(std::string_view requested) 
 
     const std::string norm = normalizeKey(requested);
 
-    // Short aliases: "4b", "2b", "0.8b"
+    // Короткие алиасы: "4b", "2b", "0.8b"
     if (norm == "4b" || norm == "qwen3.5-4b") {
         for (const auto& model : models_) {
             if (containsIgnoreCase(model.id, "4b")) {
@@ -99,7 +99,7 @@ std::optional<std::string> ModelRegistry::resolveId(std::string_view requested) 
         }
     }
 
-    // Partial match on id
+    // Частичное совпадение по id
     for (const auto& model : models_) {
         if (containsIgnoreCase(model.id, requested)) {
             return model.id;

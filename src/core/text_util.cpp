@@ -22,7 +22,7 @@ void stripThinkingBlocks(std::string& text)
             }
             const auto end = text.find(close, start + open.size());
             if (end == std::string::npos) {
-                // Unclosed block: drop from the opening tag to the end.
+                // Непарный блок: убрать от открывающего тега до конца.
                 text.erase(start);
                 break;
             }
@@ -105,9 +105,9 @@ std::vector<std::string> extractThinkingBlocks(const std::string& text)
 
 std::string stripThinkingTags(std::string text)
 {
-    // Remove entire thinking blocks (tags + inner reasoning); keep only the answer text.
+    // Убираем целые блоки обдумывания (теги + внутренняя логика); оставляем только текст ответа.
     stripThinkingBlocks(text);
-    // Qwen soft-switches echoed by the model.
+    // Мягкие переключатели Qwen, продублированные моделью.
     stripSoftSwitches(text);
     collapseHorizontalWhitespace(text);
     return text;

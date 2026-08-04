@@ -135,7 +135,7 @@ struct ServerConfig {
         cfg.pipeline.verbose = p["verbose"].get<bool>();
     }
 
-    // Legacy single-model config
+    // Устаревшая конфигурация для одной модели
     if (cfg.registry.models().empty() && p.contains("vision_model") && p.contains("llm_model")) {
         ModelSpec spec;
         spec.id = cfg.registry.defaultModelId().empty() ? "default" : cfg.registry.defaultModelId();
